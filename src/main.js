@@ -10,7 +10,11 @@ const app = document.querySelector('#app')
 
 function sign(a,b){ if(a>b)return '1'; if(a<b)return '2'; return 'X' }
 function points(ph,pa,rh,ra){ if(rh===null||ra===null||rh===undefined||ra===undefined)return null; if(ph===rh&&pa===ra)return 5; if((ph-pa)===(rh-ra))return 3; if(sign(ph,pa)===sign(rh,ra))return 2; return 0 }
-function isLocked(m){ return new Date(m.match_date).getTime() <= Date.now() }
+function isLocked(m){
+  return new Date(m.match_date).getTime() <= Date.now()
+    || m.real_home !== null
+    || m.real_away !== null
+}
 function pred(mid){ return predictions.find(p=>p.user_id===currentUser?.id&&p.match_id===mid) }
 function safe(v){ return String(v ?? '').replace(/[&<>"']/g, s => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#039;'}[s])) }
 
