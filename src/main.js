@@ -398,7 +398,15 @@ function adminView() {
       <p class="muted">
         Introduce resultados reales. También puedes reiniciar un resultado si te equivocas.
       </p>
+<div style="margin-bottom:20px">
+  <button class="small red" onclick="window.resetAllResults()">
+    🔄 Reiniciar TODOS los resultados
+  </button>
 
+  <button class="small red" onclick="window.deleteAllPredictions()">
+    🗑️ Borrar TODOS los pronósticos
+  </button>
+</div>
       ${matches.map(m => `
         <div class="adminrow">
           <b>Grupo ${safe(m.group_name)} · ${safe(m.home_team)} vs ${safe(m.away_team)}</b>
