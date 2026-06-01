@@ -1,4 +1,29 @@
 <!doctype html>
-<html lang="es"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
-<title>Mi Porra, Tu Gloria</title><link rel="stylesheet" href="/style.css"></head>
-<body><div id="app"></div><script type="module" src="/src/main.js"></script></body></html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+
+<title>Mi Porra, Tu Gloria</title>
+
+<link rel="stylesheet" href="/style.css">
+
+<link rel="manifest" href="/manifest.json">
+<meta name="theme-color" content="#22c55e">
+
+</head>
+
+<body>
+
+<div id="app"></div>
+
+<script type="module" src="/src/main.js"></script>
+
+<script>
+if ('serviceWorker' in navigator) {
+  navigator.serviceWorker.register('/sw.js');
+}
+</script>
+
+</body>
+</html>
