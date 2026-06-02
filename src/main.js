@@ -21,7 +21,8 @@ function pointsForPrediction(p,m){const b=basePoints(p.pred_home,p.pred_away,m.r
 function isLocked(m){return new Date(m.match_date).getTime()<=Date.now()}
 function generateCode(){return Math.random().toString(36).substring(2,8).toUpperCase()}
 function myPoolMembership(){return currentUser&&currentPool?poolMembers.find(pm=>pm.user_id===currentUser.id&&pm.pool_id===currentPool.id):null}
-function canAdminPool(){return currentUser?.role==='admin'}
+function canAdminPool(){ return currentUser?.role === 'admin' }
+
 function currentPoolMemberIds(){return currentPool?poolMembers.filter(pm=>pm.pool_id===currentPool.id).map(pm=>pm.user_id):[]}
 function poolUsers(){const ids=currentPoolMemberIds();return users.filter(u=>ids.includes(u.id))}
 function poolPredictions(){return currentPool?predictions.filter(p=>p.pool_id===currentPool.id):[]}
@@ -33,7 +34,8 @@ function userStats(uid){let total=0,exact=0,diff=0,sg=0,played=0,jokers=0,positi
 function badgeForUser(s,all){if(!s.played)return'';const mt=Math.max(...all.map(x=>x.total),0),me=Math.max(...all.map(x=>x.exact),0);if(s.total===mt&&s.total>0)return'<span class="badge-gold">🔥 Líder</span>';if(s.exact===me&&s.exact>0)return'<span class="badge-gold">🎯 Rey de exactos</span>';if(s.percent>=75&&s.played>=3)return'<span class="badge-gold">🧠 Experto</span>';return''}
 
 async function loadData(){if(!supabaseReady)return renderNoConfig();const [m,p,u,w,po,pm,c]=await Promise.all([supabase.from('matches').select('*').order('match_date'),supabase.from('predictions').select('*'),supabase.from('profiles').select('*').order('created_at'),supabase.from('winners_history').select('*').order('created_at',{ascending:false}),supabase.from('pools').select('*').order('created_at'),supabase.from('pool_members').select('*'),supabase.from('chat_messages').select('*').order('created_at',{ascending:true})]);matches=m.data||[];predictions=p.data||[];users=u.data||[];winners=w.data||[];pools=po.data||[];poolMembers=pm.data||[];chatMessages=c.data||[];if(currentPool)currentPool=pools.find(p=>p.id===currentPool.id)||null;render()}
-async function ensureDefaultPoolForUser(user){if(poolMembers.some(pm=>pm.user_id===user.id))return;const ins=await supabase.from('pools').insert({name:`Porra de ${user.nick}`,code:generateCode(),created_by:user.id}).select().single();if(ins.data)await supabase.from('pool_members').insert({pool_id:ins.data.id,user_id:user.id,role:'user'})}
+async function ensureDefaultPoolForUser(user){ return }
+
 async function register(){const nick=document.querySelector('#nick').value.trim(),password=document.querySelector('#password').value,email=document.querySelector('#email')?.value.trim()||'';if(!nick||!password)return alert('Pon nick y contraseña');const ex=await supabase.from('profiles').select('*').ilike('nick',nick).maybeSingle();if(ex.data)return alert('Ese nick ya existe');const ins=await supabase.from('profiles').insert({nick,password,email,role:'user'}).select().single();if(ins.error)return alert(ins.error.message);currentUser=ins.data;await loadData();await ensureDefaultPoolForUser(currentUser);await loadData();const mem=poolMembers.filter(pm=>pm.user_id===currentUser.id);currentPool=pools.find(p=>p.id===mem[0]?.pool_id)||null;tab='porras';render()}
 async function login(){const nick=document.querySelector('#nick').value.trim(),password=document.querySelector('#password').value;const res=await supabase.from('profiles').select('*').ilike('nick',nick).eq('password',password).maybeSingle();if(!res.data)return alert('Nick o contraseña incorrectos');currentUser=res.data;await loadData();await ensureDefaultPoolForUser(currentUser);await loadData();const mem=poolMembers.filter(pm=>pm.user_id===currentUser.id);currentPool=pools.find(p=>p.id===mem[0]?.pool_id)||null;tab=currentPool?'partidos':'porras';render()}
 async function recoverPassword(){const q=prompt('Escribe tu nick o email:');if(!q)return;const r=await supabase.from('profiles').select('*').or(`nick.ilike.${q},email.ilike.${q}`).maybeSingle();if(!r.data)return alert('No encontrado');alert(`Contraseña de ${r.data.nick}: ${r.data.password}`)}
@@ -44,6 +46,37 @@ function selectPool(id){currentPool=pools.find(p=>p.id===id)||null;tab=currentPo
 async function createPool(){const name=prompt('Nombre de la porra privada:');if(!name)return;let code=prompt('Código invitación. Vacío para automático:');if(!code)code=generateCode();code=code.trim().toUpperCase();const ex=await supabase.from('pools').select('*').eq('code',code).maybeSingle();if(ex.data)return alert('Ese código ya existe');const ins=await supabase.from('pools').insert({name,code,created_by:currentUser.id}).select().single();if(ins.error)return alert(ins.error.message);await supabase.from('pool_members').insert({pool_id:ins.data.id,user_id:currentUser.id,role:'user'});currentPool=ins.data;tab='partidos';await loadData()}
 async function joinPool(){let code=prompt('Código de la porra:');if(!code)return;code=code.trim().toUpperCase();const res=await supabase.from('pools').select('*').eq('code',code).maybeSingle();if(!res.data)return alert('No existe');const ex=await supabase.from('pool_members').select('*').eq('pool_id',res.data.id).eq('user_id',currentUser.id).maybeSingle();if(!ex.data)await supabase.from('pool_members').insert({pool_id:res.data.id,user_id:currentUser.id,role:'user'});currentPool=res.data;tab='partidos';await loadData()}
 function copyPoolInvite(){if(!currentPool)return;const text=`Únete a "${currentPool.name}" en Mi Porra, Tu Gloria.\n${window.location.origin}\nCódigo: ${currentPool.code}`;navigator.clipboard.writeText(text);alert('Invitación copiada')}
+
+function editPrediction(mid){
+  const m = matches.find(x => x.id === mid)
+  if(!m) return
+  if(isLocked(m) && !isGlobalAdmin()) return alert('Este partido ya ha empezado y no se puede editar')
+  editingPredictions[mid] = true
+  render()
+}
+
+async function leavePool(poolId, poolName){
+  if(!currentUser) return
+  if(!confirm(`¿Quieres salir de la porra "${poolName}"? Se borrarán tus pronósticos de esta porra.`)) return
+
+  await supabase.from('predictions')
+    .delete()
+    .eq('pool_id', poolId)
+    .eq('user_id', currentUser.id)
+
+  await supabase.from('pool_members')
+    .delete()
+    .eq('pool_id', poolId)
+    .eq('user_id', currentUser.id)
+
+  if(currentPool?.id === poolId){
+    currentPool = null
+    tab = 'porras'
+  }
+
+  await loadData()
+}
+
 async function togglePoolJoker(){if(!canAdminPool())return;await supabase.from('pools').update({enable_joker:!currentPool.enable_joker}).eq('id',currentPool.id);await loadData()}
 async function sendChatMessage(){const i=document.querySelector('#chatInput'),msg=i.value.trim();if(!msg)return;await supabase.from('chat_messages').insert({pool_id:currentPool.id,user_id:currentUser.id,message:msg});i.value='';await loadData();tab='chat';render()}
 async function deleteChatMessage(id){if(!canAdminPool())return;if(!confirm('¿Borrar mensaje?'))return;await supabase.from('chat_messages').delete().eq('id',id);await loadData()}
@@ -63,8 +96,75 @@ function hero(){return `<div class="hero"><div><div class="kicker">🏆 MUNDIAL 
 function renderNoConfig(){app.innerHTML=`<div class="app">${hero()}<div class="card"><h2>Falta conectar Supabase</h2></div></div>`}
 function loginView(){return `<div class="card"><h2>Entrar</h2><p class="muted">Primero registra un usuario.</p><label>Nick</label><input id="nick" placeholder="admin"><label>Email opcional</label><input id="email" type="email"><label>Contraseña</label><input id="password" type="password"><button id="loginBtn">Entrar</button><button id="registerBtn" class="blue">Registrarme</button><button id="recoverBtn" class="yellow">Recordar contraseña</button></div>`}
 function tabs(){const pl=currentPool?`<div class="card"><b>Porra actual:</b> ${safe(currentPool.name)} · Código: <b>${safe(currentPool.code)}</b></div>`:'';return `<div class="tabs"><button onclick="setTab('porras')">Mis porras</button><button onclick="setTab('partidos')">Partidos</button><button class="blue" onclick="setTab('normas')">Normas</button><button class="blue" onclick="setTab('clasificacion')">Clasificación</button><button class="blue" onclick="setTab('estadisticas')">Estadísticas</button><button class="blue" onclick="setTab('chat')">Chat</button><button class="blue" onclick="setTab('historial')">Historial</button>${canAdminPool()?`<button class="yellow" onclick="setTab('admin')">Admin</button>`:''}<button class="red" onclick="logout()">Salir</button></div><div class="card"><h2>${avatar(currentUser)} Hola, ${safe(currentUser.nick)}</h2><p>“Aquí se viene a sufrir… y a sumar puntos.”</p><button class="small blue" onclick="saveProfile()">Editar avatar</button></div>${pl}`}
-function poolsView(){const ids=poolMembers.filter(pm=>pm.user_id===currentUser.id).map(pm=>pm.pool_id),mine=pools.filter(p=>ids.includes(p.id));return `<div class="card"><h2>🏆 Mis porras privadas</h2><div style="margin-bottom:18px"><button onclick="createPool()">➕ Crear porra</button><button class="blue" onclick="joinPool()">🔑 Unirme con código</button></div>${mine.length?mine.map(p=>`<div class="match"><h3>${safe(p.name)}</h3><p class="muted">Código: <b>${safe(p.code)}</b> · Joker: <b>${p.enable_joker?'Sí':'No'}</b></p><button onclick="selectPool('${p.id}')">Entrar</button></div>`).join(''):'<p class="muted">No estás en ninguna porra.</p>'}</div>`}
-function matchesView(){if(!currentPool)return poolsView();return `<div class="card"><h2>Mis pronósticos</h2>${currentPool.enable_joker?`<div class="joker-box"><b>🃏 Joker:</b> 1 partido puntúa doble.</div>`:''}${matches.map(m=>{const p=pred(m.id),pt=p?pointsForPrediction(p,m):null,locked=isLocked(m),jd=!currentPool.enable_joker||(jokerUsed()&&!p?.is_joker);return `<div class="match"><span class="group">${safe(m.group_name)}</span><div class="teams">${teamName(m.home_team)} vs ${teamName(m.away_team)}</div><div class="muted">${new Date(m.match_date).toLocaleString('es-ES')}</div><p><span class="badge ${locked?'closed':''}">${locked?'🔒 Bloqueado':'Abierto'}</span> <span class="badge">${pt===null?'Pendiente':pt+' pts'}</span> ${p?.is_joker?'<span class="badge-gold">🃏 Joker</span>':''}</p><div class="score"><div><label>${teamName(m.home_team)}</label><input ${locked&&currentUser.role!=='admin'?'disabled':''} type="number" min="0" id="ph_${m.id}" value="${p?.pred_home??''}"></div><div style="font-weight:900;padding-bottom:17px">-</div><div><label>${teamName(m.away_team)}</label><input ${locked&&currentUser.role!=='admin'?'disabled':''} type="number" min="0" id="pa_${m.id}" value="${p?.pred_away??''}"></div></div>${currentPool.enable_joker?`<label><input type="checkbox" id="joker_${m.id}" ${p?.is_joker?'checked':''} ${jd?'disabled':''}> 🃏 Usar Joker</label>`:''}<button class="small" onclick="savePrediction('${m.id}')">Guardar pronóstico</button><span class="muted"> Resultado real: <b>${m.real_home===null?'Pendiente':m.real_home+' - '+m.real_away}</b></span></div>`}).join('')}</div>`}
+function poolsView(){
+  const myIds=poolMembers.filter(pm=>pm.user_id===currentUser.id).map(pm=>pm.pool_id)
+  const myPools=pools.filter(p=>myIds.includes(p.id))
+  return `
+    <div class="card">
+      <h2>🏆 Mis porras privadas</h2>
+      <p class="muted">Para jugar debes crear una porra privada o unirte a una existente con código.</p>
+      <div style="margin-bottom:18px">
+        <button onclick="window.createPool()">➕ Crear porra privada</button>
+        <button class="blue" onclick="window.joinPool()">🔑 Unirme con código</button>
+      </div>
+      ${myPools.length===0?'<p class="muted">Todavía no estás en ninguna porra.</p>':myPools.map(p=>`
+        <div class="match">
+          <h3>${safe(p.name)}</h3>
+          <p class="muted">Código: <b>${safe(p.code)}</b> · Joker: <b>${p.enable_joker?'Sí':'No'}</b></p>
+          <button onclick="window.selectPool('${p.id}')">Entrar en esta porra</button>
+          <button class="red" onclick="window.leavePool('${p.id}','${safe(p.name)}')">Salir de esta porra</button>
+        </div>
+      `).join('')}
+    </div>
+  `
+}
+
+function matchesView(){
+  if(!currentPool) return poolsView()
+  return `
+    <div class="card"><h2>Mis pronósticos</h2>
+      ${currentPool.enable_joker?`<div class="joker-box"><b>🃏 Joker activado:</b> puedes marcar 1 partido como Joker. Ese partido puntúa doble. Solo se puede usar una vez por porra.</div>`:''}
+      ${matches.map(m=>{
+        const p=pred(m.id)
+        const pt=p?pointsForPrediction(p,m):null
+        const locked=isLocked(m)
+        const hasSaved=!!p
+        const editing=!!editingPredictions[m.id]
+        const fieldsLocked = (locked && !isGlobalAdmin()) || (hasSaved && !editing)
+        const jokerDisabled = fieldsLocked || !currentPool.enable_joker || (jokerUsed() && !p?.is_joker)
+
+        return `
+          <div class="match">
+            <span class="group">${safe(m.group_name)}</span>
+            <div class="teams">${teamName(m.home_team)} vs ${teamName(m.away_team)}</div>
+            <div class="muted">${new Date(m.match_date).toLocaleString('es-ES')}</div>
+            <p>
+              <span class="badge ${locked?'closed':''}">${locked?'🔒 Partido iniciado':'Abierto'}</span>
+              <span class="badge">${hasSaved && !editing ? '🔐 Pronóstico guardado' : 'Editable'}</span>
+              <span class="badge">${pt===null?'Pendiente':pt+' pts'}</span>
+              ${p?.is_joker?'<span class="badge-gold">🃏 Joker</span>':''}
+            </p>
+            <div class="score">
+              <div><label>${teamName(m.home_team)}</label><input ${fieldsLocked?'disabled':''} type="number" min="0" id="ph_${m.id}" value="${p?.pred_home??''}"></div>
+              <div style="font-weight:900;padding-bottom:17px">-</div>
+              <div><label>${teamName(m.away_team)}</label><input ${fieldsLocked?'disabled':''} type="number" min="0" id="pa_${m.id}" value="${p?.pred_away??''}"></div>
+            </div>
+            ${currentPool.enable_joker?`<label style="display:block;margin:10px 0"><input type="checkbox" id="joker_${m.id}" ${p?.is_joker?'checked':''} ${jokerDisabled?'disabled':''}> 🃏 Usar Joker en este partido</label>`:''}
+
+            ${hasSaved && !editing && !locked
+              ? `<button class="small blue" onclick="window.editPrediction('${m.id}')">Editar pronóstico</button>`
+              : `<button class="small" ${fieldsLocked?'disabled':''} onclick="window.savePrediction('${m.id}')">Guardar pronóstico</button>`
+            }
+
+            ${hasSaved && !editing && !locked ? `<span class="muted"> Puedes editarlo hasta que empiece el partido.</span>` : ''}
+            <span class="muted"> Resultado real: <b>${m.real_home===null?'Pendiente':m.real_home+' - '+m.real_away}</b></span>
+          </div>
+        `
+      }).join('')}
+    </div>
+  `
+}
+
 function rulesView(){return `<div class="card"><h2>📖 Normas</h2><div class="rule"><h3>🎯 Exacto: 5 puntos</h3></div><div class="rule"><h3>⚽ Diferencia correcta: 3 puntos</h3></div><div class="rule"><h3>✅ Signo 1/X/2: 2 puntos</h3></div><div class="rule"><h3>❌ Fallo: 0 puntos</h3></div><div class="rule"><h3>🃏 Joker opcional</h3><p>Cada porra decide si lo usa. Si está activo, cada usuario elige 1 partido Joker. Ese partido puntúa doble: exacto 10, diferencia 6, signo 4 y fallo 0.</p></div><div class="rule"><h3>🔒 Bloqueo</h3><p>Al comenzar el partido ya no se puede cambiar el pronóstico.</p></div></div>`}
 function rankingView(){if(!currentPool)return poolsView();const rows=poolUsers().map(u=>({...u,...userStats(u.id)})).sort((a,b)=>b.total-a.total||b.exact-a.exact),all=rows;return `<div class="card"><h2>Clasificación · ${safe(currentPool.name)}</h2>${rows.map((r,i)=>`<div class="ranking"><div>${i===0?'🥇':i===1?'🥈':i===2?'🥉':i+1}</div><div>${avatar(r)} ${safe(r.nick)}<br><span class="muted">Jugados: ${r.played} · Exactos: ${r.exact} · Dif: ${r.diff} · Signos: ${r.sg} · ${r.percent}% · Joker: ${r.jokers}</span><br>${badgeForUser(r,all)}</div><div>${r.total} pts</div></div>`).join('')}</div>`}
 function statsView(){if(!currentPool)return poolsView();const rows=poolUsers().map(u=>({...u,...userStats(u.id)}));return `<div class="card"><h2>📊 Estadísticas</h2><div class="pro-grid"><div class="pro-stat"><h3>${poolUsers().length}</h3><p>Participantes</p></div><div class="pro-stat"><h3>${matches.length}</h3><p>Partidos</p></div><div class="pro-stat"><h3>${poolPredictions().length}</h3><p>Pronósticos</p></div><div class="pro-stat"><h3>${rows.reduce((s,r)=>s+r.exact,0)}</h3><p>Exactos</p></div><div class="pro-stat"><h3>${rows.reduce((s,r)=>s+r.jokers,0)}</h3><p>Jokers usados</p></div></div></div>`}
