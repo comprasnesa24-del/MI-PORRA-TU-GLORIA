@@ -5,6 +5,13 @@
   "display": "standalone",
   "background_color": "#eef6f4",
   "theme_color": "#22c55e",
-  "description": "Porra privada para fútbol, Mundial y amigos.",
-  "icons": []
+  "description": "Porra privada de fútbol",
+  "icons": [
+    {
+      "src": "/assets/hero-porra-gloria.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "any"
+    }
+  ]
 }
