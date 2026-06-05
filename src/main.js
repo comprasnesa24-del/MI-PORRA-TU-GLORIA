@@ -16,6 +16,8 @@ function safe(v){return String(v??'').replace(/[&<>"']/g,s=>({'&':'&amp;','<':'&
 function shield(t){return shields[t]||'⚽'}
 function teamName(t){return `${shield(t)} ${safe(t)}`}
 function avatar(u){return `<span class="avatar" style="background:${safe(u?.avatar_color||'#22c55e')}">${safe(u?.avatar_emoji||'⚽')}</span>`}
+function isGlobalAdmin(){ return currentUser?.role === 'admin' }
+
 function sign(a,b){if(a>b)return'1';if(a<b)return'2';return'X'}
 function basePoints(ph,pa,rh,ra){if(rh==null||ra==null)return null;if(ph===rh&&pa===ra)return 5;if((ph-pa)===(rh-ra))return 3;if(sign(ph,pa)===sign(rh,ra))return 2;return 0}
 function pointsForPrediction(p,m){const b=basePoints(p.pred_home,p.pred_away,m.real_home,m.real_away);return b==null?null:(p.is_joker?b*2:b)}
@@ -81,6 +83,24 @@ async function leavePool(poolId, poolName){
 async function togglePoolJoker(){if(!canAdminPool())return;await supabase.from('pools').update({enable_joker:!currentPool.enable_joker}).eq('id',currentPool.id);await loadData()}
 async function sendChatMessage(){const i=document.querySelector('#chatInput'),msg=i.value.trim();if(!msg)return;await supabase.from('chat_messages').insert({pool_id:currentPool.id,user_id:currentUser.id,message:msg});i.value='';await loadData();tab='chat';render()}
 async function deleteChatMessage(id){if(!canAdminPool())return;if(!confirm('¿Borrar mensaje?'))return;await supabase.from('chat_messages').delete().eq('id',id);await loadData()}
+
+async function deletePool(poolId, poolName){
+  if(currentUser?.role !== 'admin') return alert('Solo el admin principal puede eliminar porras')
+  if(!confirm(`¿Eliminar completamente la porra "${poolName}"? Se borrarán sus participantes, chat y pronósticos.`)) return
+
+  await supabase.from('predictions').delete().eq('pool_id', poolId)
+  await supabase.from('chat_messages').delete().eq('pool_id', poolId)
+  await supabase.from('pool_members').delete().eq('pool_id', poolId)
+  await supabase.from('pools').delete().eq('id', poolId)
+
+  if(currentPool?.id === poolId){
+    currentPool = null
+    tab = 'porras'
+  }
+
+  await loadData()
+}
+
 async function removeUserFromPool(uid,nick){if(uid===currentPool.created_by)return alert('No puedes quitar al creador');if(!confirm(`¿Quitar a ${nick}?`))return;await supabase.from('predictions').delete().eq('pool_id',currentPool.id).eq('user_id',uid);await supabase.from('pool_members').delete().eq('pool_id',currentPool.id).eq('user_id',uid);await loadData()}
 async function savePrediction(mid){if(!currentPool)return alert('Selecciona porra');const m=matches.find(x=>x.id===mid);if(isLocked(m)&&currentUser.role!=='admin')return alert('Bloqueado');const ph=parseInt(document.querySelector('#ph_'+mid).value,10),pa=parseInt(document.querySelector('#pa_'+mid).value,10);if(isNaN(ph)||isNaN(pa)||ph<0||pa<0)return alert('Resultado inválido');const wants=!!document.querySelector('#joker_'+mid)?.checked;if(wants&&!currentPool.enable_joker)return alert('Joker no activo');if(wants&&jokerUsed()&&!pred(mid)?.is_joker)return alert('Solo un Joker por porra');const ex=pred(mid);if(ex)await supabase.from('predictions').update({pred_home:ph,pred_away:pa,is_joker:wants}).eq('id',ex.id);else await supabase.from('predictions').insert({user_id:currentUser.id,match_id:mid,pool_id:currentPool.id,pred_home:ph,pred_away:pa,is_joker:wants});alert('Guardado');await loadData()}
 async function saveReal(mid){const rh=parseInt(document.querySelector('#rh_'+mid).value,10),ra=parseInt(document.querySelector('#ra_'+mid).value,10);if(isNaN(rh)||isNaN(ra)||rh<0||ra<0)return alert('Resultado inválido');await supabase.from('matches').update({real_home:rh,real_away:ra}).eq('id',mid);await loadData()}
@@ -98,24 +118,33 @@ function renderNoConfig(){app.innerHTML=`<div class="app">${hero()}<div class="c
 function loginView(){return `<div class="card"><h2>Entrar</h2><p class="muted">Primero registra un usuario.</p><label>Nick</label><input id="nick" placeholder="admin"><label>Email opcional</label><input id="email" type="email"><label>Contraseña</label><input id="password" type="password"><button id="loginBtn">Entrar</button><button id="registerBtn" class="blue">Registrarme</button><button id="recoverBtn" class="yellow">Recordar contraseña</button></div>`}
 function tabs(){const pl=currentPool?`<div class="card"><b>Porra actual:</b> ${safe(currentPool.name)} · Código: <b>${safe(currentPool.code)}</b></div>`:'';return `<div class="tabs"><button onclick="setTab('porras')">Mis porras</button><button onclick="setTab('partidos')">Partidos</button><button class="blue" onclick="setTab('normas')">Normas</button><button class="blue" onclick="setTab('clasificacion')">Clasificación</button><button class="blue" onclick="setTab('estadisticas')">Estadísticas</button><button class="blue" onclick="setTab('chat')">Chat</button><button class="blue" onclick="setTab('historial')">Historial</button>${canAdminPool()?`<button class="yellow" onclick="setTab('admin')">Admin</button>`:''}<button class="red" onclick="logout()">Salir</button></div><div class="card"><h2>${avatar(currentUser)} Hola, ${safe(currentUser.nick)}</h2><p>“Aquí se viene a sufrir… y a sumar puntos.”</p><button class="small blue" onclick="saveProfile()">Editar avatar</button></div>${pl}`}
 function poolsView(){
+  const isAdmin = currentUser?.role === 'admin'
   const myIds=poolMembers.filter(pm=>pm.user_id===currentUser.id).map(pm=>pm.pool_id)
-  const myPools=pools.filter(p=>myIds.includes(p.id))
+  const visiblePools = isAdmin ? pools : pools.filter(p=>myIds.includes(p.id))
+
   return `
     <div class="card">
-      <h2>🏆 Mis porras privadas</h2>
-      <p class="muted">Para jugar debes crear una porra privada o unirte a una existente con código.</p>
+      <h2>🏆 ${isAdmin ? 'Todas las porras privadas' : 'Mis porras privadas'}</h2>
+      <p class="muted">${isAdmin ? 'Como admin principal puedes entrar y controlar cualquier porra, aunque no seas participante.' : 'Para jugar debes crear una porra privada o unirte a una existente con código.'}</p>
+
       <div style="margin-bottom:18px">
         <button onclick="window.createPool()">➕ Crear porra privada</button>
         <button class="blue" onclick="window.joinPool()">🔑 Unirme con código</button>
       </div>
-      ${myPools.length===0?'<p class="muted">Todavía no estás en ninguna porra.</p>':myPools.map(p=>`
-        <div class="match">
-          <h3>${safe(p.name)}</h3>
-          <p class="muted">Código: <b>${safe(p.code)}</b> · Joker: <b>${p.enable_joker?'Sí':'No'}</b></p>
-          <button onclick="window.selectPool('${p.id}')">Entrar en esta porra</button>
-          <button class="red" onclick="window.leavePool('${p.id}','${safe(p.name)}')">Salir de esta porra</button>
-        </div>
-      `).join('')}
+
+      ${visiblePools.length===0?'<p class="muted">Todavía no hay porras.</p>':visiblePools.map(p=>{
+        const count = poolMembers.filter(pm=>pm.pool_id===p.id).length
+        const amMember = myIds.includes(p.id)
+        return `
+          <div class="match">
+            <h3>${safe(p.name)}</h3>
+            <p class="muted">Código: <b>${safe(p.code)}</b> · Participantes: <b>${count}</b> · Joker: <b>${p.enable_joker?'Sí':'No'}</b></p>
+            <button onclick="window.selectPool('${p.id}')">Entrar / controlar esta porra</button>
+            ${!isAdmin && amMember ? `<button class="red" onclick="window.leavePool('${p.id}','${safe(p.name)}')">Salir de esta porra</button>` : ''}
+            ${isAdmin ? `<button class="red" onclick="window.deletePool('${p.id}','${safe(p.name)}')">Eliminar porra</button>` : ''}
+          </div>
+        `
+      }).join('')}
     </div>
   `
 }
@@ -175,3 +204,5 @@ function adminView(){if(!currentPool)return poolsView();const members=poolUsers(
 function render(){if(!supabaseReady)return renderNoConfig();app.innerHTML=`<div class="app">${hero()}${!currentUser?loginView():tabs()+(tab==='porras'?poolsView():tab==='partidos'?matchesView():tab==='normas'?rulesView():tab==='clasificacion'?rankingView():tab==='estadisticas'?statsView():tab==='chat'?chatView():tab==='historial'?historyView():adminView())}</div>`;if(!currentUser){document.querySelector('#loginBtn').onclick=login;document.querySelector('#registerBtn').onclick=register;document.querySelector('#recoverBtn').onclick=recoverPassword}}
 Object.assign(window,{setTab,logout,saveProfile,selectPool,createPool,joinPool,copyPoolInvite,togglePoolJoker,sendChatMessage,deleteChatMessage,removeUserFromPool,savePrediction,saveReal,resetReal,resetAllResults,deletePredictionsByMatch,deleteAllPredictions,deleteUser,resetUserPredictions,toggleAdmin,saveWinnerHistory,editPrediction,leavePool})
 loadData()
+
+window.deletePool=deletePool
