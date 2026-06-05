@@ -186,7 +186,7 @@ function poolsView(){
 
 function matchPoolPredictions(matchId){
   if(!currentPool) return ''
-  const memberIds = currentPoolMemberIds()
+
   const rows = poolUsers()
     .filter(u => u.role !== 'admin')
     .map(u => {
@@ -222,7 +222,7 @@ function matchPoolPredictions(matchId){
 
 function matchesView(){
   if(currentUser?.role === 'admin') {
-    return `<div class="card"><h2>Modo administrador</h2><p>El usuario admin no participa en la porra. Entra en <b>Admin</b> o <b>Resultados globales</b> para poner resultados oficiales, ver usuarios y revisar clasificaciones.</p><button class="yellow" onclick="window.setTab('resultados')">Ir a resultados globales</button></div>`
+    return `<div class="card"><h2>Modo administrador</h2><p>El usuario admin no participa en la porra. Entra en <b>Resultados globales</b> para poner resultados oficiales, ver usuarios y revisar clasificaciones.</p><button class="yellow" onclick="window.setTab('resultados')">Ir a resultados globales</button></div>`
   }
 
   if(!currentPool) return poolsView()
@@ -238,8 +238,6 @@ function matchesView(){
         const hasSaved=!!p
         const editing=!!editingPredictions?.[m.id]
 
-        // Si el partido empezó, queda bloqueado siempre para usuarios normales.
-        // Si ya guardó pronóstico, también queda bloqueado hasta que pulse Editar.
         const fieldsLocked = locked || (hasSaved && !editing)
         const jokerDisabled = fieldsLocked || !currentPool.enable_joker || (jokerUsed() && !p?.is_joker)
 
@@ -257,17 +255,9 @@ function matchesView(){
             </p>
 
             <div class="score">
-              <div>
-                <label>${teamName(m.home_team)}</label>
-                <input ${fieldsLocked?'disabled':''} type="number" min="0" id="ph_${m.id}" value="${p?.pred_home??''}">
-              </div>
-
+              <div><label>${teamName(m.home_team)}</label><input ${fieldsLocked?'disabled':''} type="number" min="0" id="ph_${m.id}" value="${p?.pred_home??''}"></div>
               <div style="font-weight:900;padding-bottom:17px">-</div>
-
-              <div>
-                <label>${teamName(m.away_team)}</label>
-                <input ${fieldsLocked?'disabled':''} type="number" min="0" id="pa_${m.id}" value="${p?.pred_away??''}">
-              </div>
+              <div><label>${teamName(m.away_team)}</label><input ${fieldsLocked?'disabled':''} type="number" min="0" id="pa_${m.id}" value="${p?.pred_away??''}"></div>
             </div>
 
             ${currentPool.enable_joker?`<label style="display:block;margin:10px 0"><input type="checkbox" id="joker_${m.id}" ${p?.is_joker?'checked':''} ${jokerDisabled?'disabled':''}> 🃏 Usar Joker en este partido</label>`:''}
@@ -289,6 +279,88 @@ function matchesView(){
     </div>
   `
 }
+
+function globalResultsView(){
+  if(currentUser?.role !== 'admin') return `<div class="card"><h2>Acceso no permitido</h2></div>`
+
+  const pending = matches.filter(m => m.real_home === null || m.real_away === null)
+  const resolved = matches.filter(m => m.real_home !== null && m.real_away !== null)
+
+  const renderMatch = (m) => `
+    <div class="adminrow">
+      <b>${safe(m.group_name)} · ${teamName(m.home_team)} vs ${teamName(m.away_team)}</b>
+      <div class="muted">${new Date(m.match_date).toLocaleString('es-ES')}</div>
+
+      <div class="score">
+        <div>
+          <label>${teamName(m.home_team)}</label>
+          <input type="number" min="0" id="grh_${m.id}" value="${m.real_home ?? ''}">
+        </div>
+
+        <div style="font-weight:900;padding-bottom:17px">-</div>
+
+        <div>
+          <label>${teamName(m.away_team)}</label>
+          <input type="number" min="0" id="gra_${m.id}" value="${m.real_away ?? ''}">
+        </div>
+      </div>
+
+      <button class="small" onclick="window.saveGlobalReal('${m.id}')">Guardar resultado global</button>
+      <button class="small red" onclick="window.resetGlobalReal('${m.id}')">Reset resultado</button>
+
+      <p class="muted">
+        Este resultado se aplica automáticamente a TODAS las porras.
+      </p>
+    </div>
+  `
+
+  return `
+    <div class="card">
+      <h2>⚽ Resultados globales</h2>
+      <p class="muted">
+        Aquí introduces los marcadores oficiales una sola vez. Sirven para todas las porras y todas las clasificaciones se recalculan automáticamente.
+      </p>
+
+      <h3>🔴 Pendientes de resultado (${pending.length})</h3>
+      ${pending.length ? pending.map(renderMatch).join('') : '<p class="muted">No hay partidos pendientes.</p>'}
+
+      <h3>🟢 Ya resueltos (${resolved.length})</h3>
+      ${resolved.length ? resolved.map(renderMatch).join('') : '<p class="muted">Todavía no hay partidos resueltos.</p>'}
+    </div>
+  `
+}
+
+async function saveGlobalReal(mid){
+  if(currentUser?.role !== 'admin') return alert('Solo el admin puede guardar resultados oficiales')
+
+  const rh = parseInt(document.querySelector('#grh_' + mid).value, 10)
+  const ra = parseInt(document.querySelector('#gra_' + mid).value, 10)
+
+  if(isNaN(rh) || isNaN(ra) || rh < 0 || ra < 0){
+    return alert('Pon un resultado válido')
+  }
+
+  await supabase
+    .from('matches')
+    .update({ real_home: rh, real_away: ra })
+    .eq('id', mid)
+
+  await loadData()
+  alert('Resultado oficial guardado. Ya cuenta para todas las porras.')
+}
+
+async function resetGlobalReal(mid){
+  if(currentUser?.role !== 'admin') return alert('Solo el admin puede reiniciar resultados oficiales')
+  if(!confirm('¿Borrar el resultado oficial de este partido? Afectará a todas las porras.')) return
+
+  await supabase
+    .from('matches')
+    .update({ real_home: null, real_away: null })
+    .eq('id', mid)
+
+  await loadData()
+}
+
 
 function rulesView(){return `<div class="card"><h2>📖 Normas</h2><div class="rule"><h3>🎯 Exacto: 5 puntos</h3></div><div class="rule"><h3>⚽ Diferencia correcta: 3 puntos</h3></div><div class="rule"><h3>✅ Signo 1/X/2: 2 puntos</h3></div><div class="rule"><h3>❌ Fallo: 0 puntos</h3></div><div class="rule"><h3>🃏 Joker opcional</h3><p>Cada porra decide si lo usa. Si está activo, cada usuario elige 1 partido Joker. Ese partido puntúa doble: exacto 10, diferencia 6, signo 4 y fallo 0.</p></div><div class="rule"><h3>🔒 Bloqueo</h3><p>Al comenzar el partido ya no se puede cambiar el pronóstico. En ese momento se muestran automáticamente los pronósticos de todos los integrantes de la porra para ese partido.</p></div></div>`}
 function rankingView(){if(!currentPool)return poolsView();const rows=poolUsers().filter(u=>u.role!=='admin').map(u=>({...u,...userStats(u.id)})).sort((a,b)=>b.total-a.total||b.exact-a.exact),all=rows;return `<div class="card"><h2>Clasificación · ${safe(currentPool.name)}</h2>${rows.map((r,i)=>`<div class="ranking"><div>${i===0?'🥇':i===1?'🥈':i===2?'🥉':i+1}</div><div>${avatar(r)} ${safe(r.nick)}<br><span class="muted">Jugados: ${r.played} · Exactos: ${r.exact} · Dif: ${r.diff} · Signos: ${r.sg} · ${r.percent}% · Joker: ${r.jokers}</span><br>${badgeForUser(r,all)}</div><div>${r.total} pts</div></div>`).join('')}</div>`}
