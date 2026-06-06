@@ -10,6 +10,60 @@ let editingPredictions={}
 let matches=[],predictions=[],users=[],winners=[],pools=[],poolMembers=[],chatMessages=[]
 const app=document.querySelector('#app')
 
+const SESSION_KEY='mi_porra_session_v2'
+
+function saveSession(){
+  try{
+    localStorage.setItem(SESSION_KEY, JSON.stringify({
+      userId: currentUser?.id || null,
+      poolId: currentPool?.id || null
+    }))
+  }catch(e){}
+}
+
+function clearSession(){
+  try{ localStorage.removeItem(SESSION_KEY) }catch(e){}
+}
+
+async function restoreSession(){
+  if(!supabaseReady) return false
+  try{
+    const raw=localStorage.getItem(SESSION_KEY)
+    if(!raw) return false
+
+    const session=JSON.parse(raw)
+    if(!session.userId) return false
+
+    const userRes=await supabase.from('profiles').select('*').eq('id',session.userId).maybeSingle()
+    if(!userRes.data){
+      clearSession()
+      return false
+    }
+
+    currentUser=userRes.data
+
+    await loadData(false)
+
+    if(session.poolId){
+      currentPool=pools.find(p=>p.id===session.poolId)||null
+    }
+
+    if(!currentPool){
+      const mem=poolMembers.find(pm=>pm.user_id===currentUser.id)
+      currentPool=pools.find(p=>p.id===mem?.pool_id)||null
+    }
+
+    tab=currentPool?'partidos':'porras'
+    document.title='MI PORRA'
+    render()
+    return true
+  }catch(e){
+    clearSession()
+    return false
+  }
+}
+
+
 const shields={'España':'🇪🇸','México':'🇲🇽','Sudáfrica':'🇿🇦','Corea del Sur':'🇰🇷','República Checa':'🇨🇿','Canadá':'🇨🇦','Bosnia y Herzegovina':'🇧🇦','Estados Unidos':'🇺🇸','Paraguay':'🇵🇾','Brasil':'🇧🇷','Marruecos':'🇲🇦','Australia':'🇦🇺','Turquía':'🇹🇷','Haití':'🇭🇹','Escocia':'🏴','Catar':'🇶🇦','Suiza':'🇨🇭','Costa de Marfil':'🇨🇮','Ecuador':'🇪🇨','Alemania':'🇩🇪','Curazao':'🇨🇼','Países Bajos':'🇳🇱','Japón':'🇯🇵','Suecia':'🇸🇪','Túnez':'🇹🇳','Arabia Saudí':'🇸🇦','Uruguay':'🇺🇾','Cabo Verde':'🇨🇻','Irán':'🇮🇷','Nueva Zelanda':'🇳🇿','Bélgica':'🇧🇪','Egipto':'🇪🇬','Francia':'🇫🇷','Senegal':'🇸🇳','Irak':'🇮🇶','Noruega':'🇳🇴','Argentina':'🇦🇷','Argelia':'🇩🇿','Austria':'🇦🇹','Jordania':'🇯🇴','Ghana':'🇬🇭','Panamá':'🇵🇦','Inglaterra':'🏴','Croacia':'🇭🇷','Portugal':'🇵🇹','RD Congo':'🇨🇩','Uzbekistán':'🇺🇿','Colombia':'🇨🇴','Perú':'🇵🇪','Irlanda del Norte':'🇬🇧','Costa Rica':'🇨🇷','CD Castellón':'⚪⚫','UD Almería':'🔴⚪','UD Las Palmas':'🟡🔵','Málaga CF':'🔵⚪','Peor clasificado final':'🏆','Mejor clasificado final':'🏆'}
 
 function safe(v){return String(v??'').replace(/[&<>"']/g,s=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#039;'}[s]))}
@@ -36,16 +90,16 @@ function jokerUsed(){return currentPool&&currentUser?poolPredictions().some(p=>p
 function userStats(uid){let total=0,exact=0,diff=0,sg=0,played=0,jokers=0,positive=0;poolPredictions().filter(p=>p.user_id===uid).forEach(p=>{const m=matches.find(x=>x.id===p.match_id);if(!m)return;const b=basePoints(p.pred_home,p.pred_away,m.real_home,m.real_away);const pt=pointsForPrediction(p,m);if(pt!==null)played++;total+=pt||0;if(b===5)exact++;if(b===3)diff++;if(b===2)sg++;if(b&&b>0)positive++;if(p.is_joker)jokers++});return{total,exact,diff,sg,played,jokers,percent:played?Math.round((positive/played)*100):0}}
 function badgeForUser(s,all){if(!s.played)return'';const mt=Math.max(...all.map(x=>x.total),0),me=Math.max(...all.map(x=>x.exact),0);if(s.total===mt&&s.total>0)return'<span class="badge-gold">🔥 Líder</span>';if(s.exact===me&&s.exact>0)return'<span class="badge-gold">🎯 Rey de exactos</span>';if(s.percent>=75&&s.played>=3)return'<span class="badge-gold">🧠 Experto</span>';return''}
 
-async function loadData(){if(!supabaseReady)return renderNoConfig();const [m,p,u,w,po,pm,c]=await Promise.all([supabase.from('matches').select('*').order('match_date'),supabase.from('predictions').select('*'),supabase.from('profiles').select('*').order('created_at'),supabase.from('winners_history').select('*').order('created_at',{ascending:false}),supabase.from('pools').select('*').order('created_at'),supabase.from('pool_members').select('*'),supabase.from('chat_messages').select('*').order('created_at',{ascending:true})]);matches=m.data||[];predictions=p.data||[];users=u.data||[];winners=w.data||[];pools=po.data||[];poolMembers=pm.data||[];chatMessages=c.data||[];if(currentPool)currentPool=pools.find(p=>p.id===currentPool.id)||null;render()}
+async function loadData(doRender=true){if(!supabaseReady)return renderNoConfig();const [m,p,u,w,po,pm,c]=await Promise.all([supabase.from('matches').select('*').order('match_date'),supabase.from('predictions').select('*'),supabase.from('profiles').select('*').order('created_at'),supabase.from('winners_history').select('*').order('created_at',{ascending:false}),supabase.from('pools').select('*').order('created_at'),supabase.from('pool_members').select('*'),supabase.from('chat_messages').select('*').order('created_at',{ascending:true})]);matches=m.data||[];predictions=p.data||[];users=u.data||[];winners=w.data||[];pools=po.data||[];poolMembers=pm.data||[];chatMessages=c.data||[];if(currentPool)currentPool=pools.find(p=>p.id===currentPool.id)||null;if(doRender)render()}
 async function ensureDefaultPoolForUser(user){ return }
 
-async function register(){const nick=document.querySelector('#nick').value.trim(),password=document.querySelector('#password').value,email=document.querySelector('#email')?.value.trim()||'';if(!nick||!password)return alert('Pon nick y contraseña');const ex=await supabase.from('profiles').select('*').ilike('nick',nick).maybeSingle();if(ex.data)return alert('Ese nick ya existe');const ins=await supabase.from('profiles').insert({nick,password,email,role:'user'}).select().single();if(ins.error)return alert(ins.error.message);currentUser=ins.data;await loadData();await ensureDefaultPoolForUser(currentUser);await loadData();const mem=poolMembers.filter(pm=>pm.user_id===currentUser.id);currentPool=pools.find(p=>p.id===mem[0]?.pool_id)||null;tab='porras';render()}
-async function login(){const nick=document.querySelector('#nick').value.trim(),password=document.querySelector('#password').value;const res=await supabase.from('profiles').select('*').ilike('nick',nick).eq('password',password).maybeSingle();if(!res.data)return alert('Nick o contraseña incorrectos');currentUser=res.data;await loadData();await ensureDefaultPoolForUser(currentUser);await loadData();const mem=poolMembers.filter(pm=>pm.user_id===currentUser.id);currentPool=pools.find(p=>p.id===mem[0]?.pool_id)||null;tab=currentPool?'partidos':'porras';render()}
+async function register(){const nick=document.querySelector('#nick').value.trim(),password=document.querySelector('#password').value,email=document.querySelector('#email')?.value.trim()||'';if(!nick||!password)return alert('Pon nick y contraseña');const ex=await supabase.from('profiles').select('*').ilike('nick',nick).maybeSingle();if(ex.data)return alert('Ese nick ya existe');const ins=await supabase.from('profiles').insert({nick,password,email,role:'user'}).select().single();if(ins.error)return alert(ins.error.message);currentUser=ins.data;saveSession();await loadData();await ensureDefaultPoolForUser(currentUser);await loadData();const mem=poolMembers.filter(pm=>pm.user_id===currentUser.id);currentPool=pools.find(p=>p.id===mem[0]?.pool_id)||null;tab='porras';saveSession();document.title='MI PORRA';render()}
+async function login(){const nick=document.querySelector('#nick').value.trim(),password=document.querySelector('#password').value;const res=await supabase.from('profiles').select('*').ilike('nick',nick).eq('password',password).maybeSingle();if(!res.data)return alert('Nick o contraseña incorrectos');currentUser=res.data;saveSession();await loadData();await ensureDefaultPoolForUser(currentUser);await loadData();const mem=poolMembers.filter(pm=>pm.user_id===currentUser.id);currentPool=pools.find(p=>p.id===mem[0]?.pool_id)||null;tab=currentPool?'partidos':'porras';saveSession();document.title='MI PORRA';render()}
 async function recoverPassword(){const q=prompt('Escribe tu nick o email:');if(!q)return;const r=await supabase.from('profiles').select('*').or(`nick.ilike.${q},email.ilike.${q}`).maybeSingle();if(!r.data)return alert('No encontrado');alert(`Contraseña de ${r.data.nick}: ${r.data.password}`)}
 async function saveProfile(){const emoji=prompt('Emoji avatar',currentUser.avatar_emoji||'⚽');if(!emoji)return;const color=prompt('Color fondo',currentUser.avatar_color||'#22c55e');if(!color)return;await supabase.from('profiles').update({avatar_emoji:emoji,avatar_color:color}).eq('id',currentUser.id);currentUser={...currentUser,avatar_emoji:emoji,avatar_color:color};await loadData()}
-function logout(){currentUser=null;currentPool=null;tab='porras';render()}
+function logout(){currentUser=null;currentPool=null;tab='porras';saveSession();document.title='MI PORRA';render()}
 function setTab(t){tab=t;render()}
-function selectPool(id){currentPool=pools.find(p=>p.id===id)||null;tab=currentPool?'partidos':'porras';render()}
+function selectPool(id){currentPool=pools.find(p=>p.id===id)||null;tab=currentPool?'partidos':'porras';saveSession();document.title='MI PORRA';render()}
 async function createPool(){
   const name=prompt('Nombre de la porra privada:')
   if(!name)return
@@ -78,10 +132,11 @@ async function createPool(){
 
   currentPool=ins.data
   tab='partidos'
+  saveSession()
   await loadData()
 }
 
-async function joinPool(){let code=prompt('Código de la porra:');if(!code)return;code=code.trim().toUpperCase();const res=await supabase.from('pools').select('*').eq('code',code).maybeSingle();if(!res.data)return alert('No existe');const ex=await supabase.from('pool_members').select('*').eq('pool_id',res.data.id).eq('user_id',currentUser.id).maybeSingle();if(!ex.data)await supabase.from('pool_members').insert({pool_id:res.data.id,user_id:currentUser.id,role:'user'});currentPool=res.data;tab='partidos';await loadData()}
+async function joinPool(){let code=prompt('Código de la porra:');if(!code)return;code=code.trim().toUpperCase();const res=await supabase.from('pools').select('*').eq('code',code).maybeSingle();if(!res.data)return alert('No existe');const ex=await supabase.from('pool_members').select('*').eq('pool_id',res.data.id).eq('user_id',currentUser.id).maybeSingle();if(!ex.data)await supabase.from('pool_members').insert({pool_id:res.data.id,user_id:currentUser.id,role:'user'});currentPool=res.data;tab='partidos';saveSession();document.title='MI PORRA';await loadData()}
 function copyPoolInvite(){if(!currentPool)return;const text=`Únete a "${currentPool.name}" en Mi Porra, Tu Gloria.\n${window.location.origin}\nCódigo: ${currentPool.code}`;navigator.clipboard.writeText(text);alert('Invitación copiada')}
 
 function editPrediction(mid){
@@ -368,6 +423,7 @@ function historyView(){return `<div class="card"><h2>🏆 Historial</h2>${winner
 function adminView(){if(!currentPool)return poolsView();const members=poolUsers().filter(u=>u.role!=='admin');return `<div class="card"><h2>Admin · ${safe(currentPool.name)}</h2><div style="margin-bottom:20px"><button class="small blue" onclick="copyPoolInvite()">📲 Copiar invitación</button><button class="small yellow" onclick="updatePoolSettings()">⚙️ Joker/Premios</button><button class="small yellow" onclick="togglePoolJoker()">🃏 Joker: ${currentPool.enable_joker?'Activado':'Desactivado'}</button><button class="small yellow" onclick="saveWinnerHistory()">🏆 Guardar ganador</button><button class="small red" onclick="resetAllResults()">🔄 Reiniciar resultados</button><button class="small red" onclick="deleteAllPredictions()">🗑️ Borrar pronósticos</button></div><h3>Usuarios</h3>${members.map(u=>{const s=userStats(u.id),mem=poolMembers.find(pm=>pm.pool_id===currentPool.id&&pm.user_id===u.id);return `<div class="ranking"><div>${mem?.role==='admin'?'👑':'👤'}</div><div>${avatar(u)} ${safe(u.nick)}<br><span class="muted">${mem?.role||'user'} · ${s.total} pts</span></div><div><button class="small yellow" onclick="toggleAdmin('${u.id}','${mem?.role||'user'}','${safe(u.nick)}')">${mem?.role==='admin'?'Quitar admin':'Hacer admin'}</button><button class="small red" onclick="resetUserPredictions('${u.id}','${safe(u.nick)}')">Reset</button>${u.id!==currentUser.id?`<button class="small red" onclick="removeUserFromPool('${u.id}','${safe(u.nick)}')">Quitar</button>`:''}${currentUser.role==='admin'&&u.nick.toLowerCase()!=='admin'?`<button class="small red" onclick="deleteUser('${u.id}','${safe(u.nick)}')">Eliminar app</button>`:''}</div></div>`}).join('')}<h3>Resultados</h3>${matches.map(m=>`<div class="adminrow"><b>${safe(m.group_name)} · ${teamName(m.home_team)} vs ${teamName(m.away_team)}</b><div class="muted">${new Date(m.match_date).toLocaleString('es-ES')}</div><div class="score"><div><label>${teamName(m.home_team)}</label><input type="number" min="0" id="rh_${m.id}" value="${m.real_home??''}"></div><div style="font-weight:900;padding-bottom:17px">-</div><div><label>${teamName(m.away_team)}</label><input type="number" min="0" id="ra_${m.id}" value="${m.real_away??''}"></div></div><button class="small" onclick="saveReal('${m.id}')">Guardar resultado</button><button class="small red" onclick="resetReal('${m.id}')">Reset resultado</button><button class="small red" onclick="deletePredictionsByMatch('${m.id}')">Borrar pronósticos partido</button></div>`).join('')}</div>`}
 function render(){if(!supabaseReady)return renderNoConfig();app.innerHTML=`<div class="app">${hero()}${!currentUser?loginView():tabs()+(tab==='porras'?poolsView():tab==='partidos'?matchesView():tab==='normas'?rulesView():tab==='clasificacion'?rankingView():tab==='estadisticas'?statsView():tab==='chat'?chatView():tab==='historial'?historyView():adminView())}</div>`;if(!currentUser){document.querySelector('#loginBtn').onclick=login;document.querySelector('#registerBtn').onclick=register;document.querySelector('#recoverBtn').onclick=recoverPassword}}
 Object.assign(window,{setTab,logout,saveProfile,selectPool,createPool,joinPool,copyPoolInvite,togglePoolJoker,sendChatMessage,deleteChatMessage,removeUserFromPool,savePrediction,saveReal,resetReal,resetAllResults,deletePredictionsByMatch,deleteAllPredictions,deleteUser,resetUserPredictions,toggleAdmin,saveWinnerHistory,editPrediction,leavePool,updatePoolSettings})
-loadData()
+document.title='MI PORRA'
+restoreSession().then(ok=>{if(!ok)loadData()})
 
 window.deletePool=deletePool
