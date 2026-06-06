@@ -85,7 +85,13 @@ function poolUsers(){const ids=currentPoolMemberIds();return users.filter(u=>ids
 function poolPredictions(){return currentPool?predictions.filter(p=>p.pool_id===currentPool.id):[]}
 function poolChat(){return currentPool?chatMessages.filter(m=>m.pool_id===currentPool.id):[]}
 function pred(mid){return poolPredictions().find(p=>p.user_id===currentUser?.id&&p.match_id===mid)}
-function jokerUsed(){return currentPool&&currentUser?poolPredictions().some(p=>p.user_id===currentUser.id&&p.is_joker):false}
+function jokerCount(){
+  return currentPool&&currentUser
+    ? poolPredictions().filter(p=>p.user_id===currentUser.id&&p.is_joker).length
+    : 0
+}
+function jokerLimit(){return 5}
+function jokerUsed(){return jokerCount()>=jokerLimit()}
 
 function userStats(uid){let total=0,exact=0,diff=0,sg=0,played=0,jokers=0,positive=0;poolPredictions().filter(p=>p.user_id===uid).forEach(p=>{const m=matches.find(x=>x.id===p.match_id);if(!m)return;const b=basePoints(p.pred_home,p.pred_away,m.real_home,m.real_away);const pt=pointsForPrediction(p,m);if(pt!==null)played++;total+=pt||0;if(b===5)exact++;if(b===3)diff++;if(b===2)sg++;if(b&&b>0)positive++;if(p.is_joker)jokers++});return{total,exact,diff,sg,played,jokers,percent:played?Math.round((positive/played)*100):0}}
 function badgeForUser(s,all){if(!s.played)return'';const mt=Math.max(...all.map(x=>x.total),0),me=Math.max(...all.map(x=>x.exact),0);if(s.total===mt&&s.total>0)return'<span class="badge-gold">🔥 Líder</span>';if(s.exact===me&&s.exact>0)return'<span class="badge-gold">🎯 Rey de exactos</span>';if(s.percent>=75&&s.played>=3)return'<span class="badge-gold">🧠 Experto</span>';return''}
@@ -111,7 +117,7 @@ async function createPool(){
   const ex=await supabase.from('pools').select('*').eq('code',code).maybeSingle()
   if(ex.data)return alert('Ese código ya existe')
 
-  const jokerConfirm=confirm('¿Quieres activar el Joker en esta porra?\n\nSi lo activas, cada jugador podrá usar 1 Joker para duplicar los puntos de un partido.')
+  const jokerConfirm=confirm('¿Quieres activar el Joker en esta porra?\n\nSi lo activas, cada jugador tendrá 5 Jokers para duplicar los puntos de hasta 5 partidos.')
   const prizes=prompt('Premios de esta porra. Ejemplo:\n1º 100€\n2º Cena\n3º Botella de vino','') || ''
 
   const ins=await supabase.from('pools').insert({
@@ -207,7 +213,7 @@ async function deletePool(poolId, poolName){
 
 async function removeUserFromPool(uid,nick){if(uid===currentPool.created_by)return alert('No puedes quitar al creador');if(!confirm(`¿Quitar a ${nick}?`))return;await supabase.from('predictions').delete().eq('pool_id',currentPool.id).eq('user_id',uid);await supabase.from('pool_members').delete().eq('pool_id',currentPool.id).eq('user_id',uid);await loadData()}
 async function savePrediction(mid){
-  if(currentUser?.role === 'admin') return alert('El admin no puede participar ni hacer pronósticos');if(!currentPool)return alert('Selecciona porra');const m=matches.find(x=>x.id===mid);if(isLocked(m)&&currentUser.role!=='admin')return alert('Bloqueado');const ph=parseInt(document.querySelector('#ph_'+mid).value,10),pa=parseInt(document.querySelector('#pa_'+mid).value,10);if(isNaN(ph)||isNaN(pa)||ph<0||pa<0)return alert('Resultado inválido');const wants=!!document.querySelector('#joker_'+mid)?.checked;if(wants&&!currentPool.enable_joker)return alert('Joker no activo');if(wants&&jokerUsed()&&!pred(mid)?.is_joker)return alert('Solo un Joker por porra');const ex=pred(mid);if(ex)await supabase.from('predictions').update({pred_home:ph,pred_away:pa,is_joker:wants}).eq('id',ex.id);else await supabase.from('predictions').insert({user_id:currentUser.id,match_id:mid,pool_id:currentPool.id,pred_home:ph,pred_away:pa,is_joker:wants});alert('Guardado');await loadData()}
+  if(currentUser?.role === 'admin') return alert('El admin no puede participar ni hacer pronósticos');if(!currentPool)return alert('Selecciona porra');const m=matches.find(x=>x.id===mid);if(isLocked(m)&&currentUser.role!=='admin')return alert('Bloqueado');const ph=parseInt(document.querySelector('#ph_'+mid).value,10),pa=parseInt(document.querySelector('#pa_'+mid).value,10);if(isNaN(ph)||isNaN(pa)||ph<0||pa<0)return alert('Resultado inválido');const wants=!!document.querySelector('#joker_'+mid)?.checked;if(wants&&!currentPool.enable_joker)return alert('Joker no activo');if(wants&&jokerUsed()&&!pred(mid)?.is_joker)return alert('Ya has usado tus 5 Jokers en esta porra');const ex=pred(mid);if(ex)await supabase.from('predictions').update({pred_home:ph,pred_away:pa,is_joker:wants}).eq('id',ex.id);else await supabase.from('predictions').insert({user_id:currentUser.id,match_id:mid,pool_id:currentPool.id,pred_home:ph,pred_away:pa,is_joker:wants});alert('Guardado');await loadData()}
 async function saveReal(mid){const rh=parseInt(document.querySelector('#rh_'+mid).value,10),ra=parseInt(document.querySelector('#ra_'+mid).value,10);if(isNaN(rh)||isNaN(ra)||rh<0||ra<0)return alert('Resultado inválido');await supabase.from('matches').update({real_home:rh,real_away:ra}).eq('id',mid);await loadData()}
 async function resetReal(mid){if(!confirm('¿Borrar resultado?'))return;await supabase.from('matches').update({real_home:null,real_away:null}).eq('id',mid);await loadData()}
 async function resetAllResults(){if(!confirm('¿Borrar TODOS los resultados?'))return;await supabase.from('matches').update({real_home:null,real_away:null}).neq('id','');await loadData()}
@@ -334,7 +340,7 @@ function matchesView(){
 
   return `
     <div class="card"><h2>Mis pronósticos</h2>
-      ${currentPool.enable_joker?`<div class="joker-box"><b>🃏 Joker activado:</b> puedes marcar 1 partido como Joker. Ese partido puntúa doble. Solo se puede usar una vez por porra.</div>`:''}
+      ${currentPool.enable_joker?`<div class="joker-box"><b>🃏 Joker activado:</b> tienes 5 Jokers para usar en esta porra. Cada partido Joker puntúa doble. Te quedan ${jokerLimit()-jokerCount()}.</div>`:''}
 
       ${matches.map(m=>{
         const p=pred(m.id)
@@ -395,7 +401,7 @@ function matchesView(){
 
 function rulesView(){
   const jokerText = currentPool?.enable_joker
-    ? '<b>Joker activado:</b> cada jugador puede elegir 1 partido Joker. Ese partido puntúa doble: exacto 10, diferencia 6, signo 4 y fallo 0.'
+    ? '<b>Joker activado:</b> cada jugador puede elegir hasta 5 partidos Joker. Cada usuario tiene 5 Jokers por porra. Cada partido marcado como Joker puntúa doble: exacto 10, diferencia 6, signo 4 y fallo 0.'
     : '<b>Joker desactivado:</b> en esta porra no se usa Joker.'
 
   const prizesText = currentPool?.prizes
