@@ -75,6 +75,9 @@ function isGlobalAdmin(){ return currentUser?.role === 'admin' }
 function sign(a,b){if(a>b)return'1';if(a<b)return'2';return'X'}
 function basePoints(ph,pa,rh,ra){if(rh==null||ra==null)return null;if(ph===rh&&pa===ra)return 5;if((ph-pa)===(rh-ra))return 3;if(sign(ph,pa)===sign(rh,ra))return 2;return 0}
 function pointsForPrediction(p,m){const b=basePoints(p.pred_home,p.pred_away,m.real_home,m.real_away);return b==null?null:(p.is_joker?b*2:b)}
+function isArchivedMatch(m){const d=new Date(m.match_date).getTime();return Date.now()-d>7*24*60*60*1000}
+function activeMatches(){return matches.filter(m=>!isArchivedMatch(m))}
+function archivedMatches(){return matches.filter(m=>isArchivedMatch(m))}
 function isLocked(m){return new Date(m.match_date).getTime()<=Date.now()}
 function generateCode(){return Math.random().toString(36).substring(2,8).toUpperCase()}
 function myPoolMembership(){return currentUser&&currentPool?poolMembers.find(pm=>pm.user_id===currentUser.id&&pm.pool_id===currentPool.id):null}
@@ -235,7 +238,7 @@ function tabs(){
       <button class="blue" onclick="window.setTab('clasificacion')">Clasificación</button>
       <button class="blue" onclick="window.setTab('estadisticas')">Estadísticas</button>
       <button class="blue" onclick="window.setTab('chat')">Chat</button>
-      <button class="blue" onclick="window.setTab('historial')">Historial</button>
+      <button class="blue" onclick="window.setTab('historial')">Historial</button><button class="blue" onclick="window.setTab('archivo')">Archivo</button>
       <button class="yellow" onclick="window.setTab('admin')">Admin</button>
       <button class="red" onclick="window.logout()">Salir</button>
     </div>
@@ -248,7 +251,7 @@ function tabs(){
       <button class="blue" onclick="window.setTab('clasificacion')">Clasificación</button>
       <button class="blue" onclick="window.setTab('estadisticas')">Estadísticas</button>
       <button class="blue" onclick="window.setTab('chat')">Chat</button>
-      <button class="blue" onclick="window.setTab('historial')">Historial</button>
+      <button class="blue" onclick="window.setTab('historial')">Historial</button><button class="blue" onclick="window.setTab('archivo')">Archivo</button>
       <button class="red" onclick="window.logout()">Salir</button>
     </div>
   `
@@ -342,7 +345,7 @@ function matchesView(){
     <div class="card"><h2>Mis pronósticos</h2>
       ${currentPool.enable_joker?`<div class="joker-box"><b>🃏 Joker activado:</b> tienes 5 Jokers para usar en esta porra. Cada partido Joker puntúa doble. Te quedan ${jokerLimit()-jokerCount()}.</div>`:''}
 
-      ${matches.map(m=>{
+      ${activeMatches().map(m=>{
         const p=pred(m.id)
         const pt=p?pointsForPrediction(p,m):null
         const locked=isLocked(m)
@@ -399,6 +402,53 @@ function matchesView(){
   `
 }
 
+function globalResultsView(){
+  if(currentUser?.role!=='admin')return `<div class="card"><h2>Acceso no permitido</h2></div>`;
+  const list=activeMatches();
+  const pending=list.filter(m=>m.real_home===null||m.real_away===null);
+  const resolved=list.filter(m=>m.real_home!==null&&m.real_away!==null);
+  const renderMatch=(m)=>`
+    <div class="adminrow">
+      <b>${safe(m.group_name)} · ${teamName(m.home_team)} vs ${teamName(m.away_team)}</b>
+      <div class="muted">${new Date(m.match_date).toLocaleString('es-ES')}</div>
+      <div class="score">
+        <div><label>${teamName(m.home_team)}</label><input type="number" min="0" id="grh_${m.id}" value="${m.real_home??''}"></div>
+        <div style="font-weight:900;padding-bottom:17px">-</div>
+        <div><label>${teamName(m.away_team)}</label><input type="number" min="0" id="gra_${m.id}" value="${m.real_away??''}"></div>
+      </div>
+      <button class="small" onclick="window.saveGlobalReal('${m.id}')">Guardar resultado global</button>
+      <button class="small red" onclick="window.resetGlobalReal('${m.id}')">Reset resultado</button>
+      <p class="muted">Este resultado se aplica a TODAS las porras.</p>
+    </div>`;
+  return `
+    <div class="card">
+      <h2>⚽ Resultados globales</h2>
+      <p class="muted">Aquí pones los resultados una sola vez. Valen para todas las porras y todas las clasificaciones.</p>
+      <h3>🔴 Pendientes (${pending.length})</h3>
+      ${pending.length?pending.map(renderMatch).join(''):'<p class="muted">No hay pendientes.</p>'}
+      <h3>🟢 Resueltos recientes (${resolved.length})</h3>
+      ${resolved.length?resolved.map(renderMatch).join(''):'<p class="muted">No hay resueltos recientes.</p>'}
+      <p class="muted">Los partidos con más de 7 días pasan automáticamente al Archivo.</p>
+    </div>`;
+}
+
+async function saveGlobalReal(mid){
+  if(currentUser?.role!=='admin')return alert('Solo el admin puede guardar resultados');
+  const rh=parseInt(document.querySelector('#grh_'+mid).value,10);
+  const ra=parseInt(document.querySelector('#gra_'+mid).value,10);
+  if(isNaN(rh)||isNaN(ra)||rh<0||ra<0)return alert('Pon resultado válido');
+  await supabase.from('matches').update({real_home:rh,real_away:ra}).eq('id',mid);
+  await loadData();
+  alert('Resultado guardado para todas las porras');
+}
+
+async function resetGlobalReal(mid){
+  if(currentUser?.role!=='admin')return alert('Solo el admin puede reiniciar resultados');
+  if(!confirm('¿Borrar este resultado global? Afectará a todas las porras.'))return;
+  await supabase.from('matches').update({real_home:null,real_away:null}).eq('id',mid);
+  await loadData();
+}
+
 function rulesView(){
   const jokerText = currentPool?.enable_joker
     ? '<b>Joker activado:</b> cada jugador puede elegir hasta 5 partidos Joker. Cada usuario tiene 5 Jokers por porra. Cada partido marcado como Joker puntúa doble: exacto 10, diferencia 6, signo 4 y fallo 0.'
@@ -427,8 +477,31 @@ function statsView(){if(!currentPool)return poolsView();const rows=poolUsers().f
 function chatView(){if(!currentPool)return poolsView();return `<div class="card"><h2>💬 Chat</h2>${poolChat().map(msg=>{const u=users.find(x=>x.id===msg.user_id);return `<div class="chat-message"><b>${avatar(u)} ${safe(u?.nick||'Usuario')}</b><br>${safe(msg.message)}<br><span class="muted">${new Date(msg.created_at).toLocaleString('es-ES')}</span> ${canAdminPool()?`<button class="small red" onclick="deleteChatMessage('${msg.id}')">Borrar</button>`:''}</div>`}).join('')}<input id="chatInput" placeholder="Escribe un mensaje..."><button onclick="sendChatMessage()">Enviar</button></div>`}
 function historyView(){return `<div class="card"><h2>🏆 Historial</h2>${winners.length?winners.map(w=>`<div class="ranking"><div>🏆</div><div>${safe(w.winner_nick)}<br><span class="muted">${safe(w.season)}</span></div><div>${w.points} pts</div></div>`).join(''):'<p class="muted">Sin ganadores guardados.</p>'}</div>`}
 function adminView(){if(!currentPool)return poolsView();const members=poolUsers().filter(u=>u.role!=='admin');return `<div class="card"><h2>Admin · ${safe(currentPool.name)}</h2><div style="margin-bottom:20px"><button class="small blue" onclick="copyPoolInvite()">📲 Copiar invitación</button><button class="small yellow" onclick="updatePoolSettings()">⚙️ Joker/Premios</button><button class="small yellow" onclick="togglePoolJoker()">🃏 Joker: ${currentPool.enable_joker?'Activado':'Desactivado'}</button><button class="small yellow" onclick="saveWinnerHistory()">🏆 Guardar ganador</button><button class="small red" onclick="resetAllResults()">🔄 Reiniciar resultados</button><button class="small red" onclick="deleteAllPredictions()">🗑️ Borrar pronósticos</button></div><h3>Usuarios</h3>${members.map(u=>{const s=userStats(u.id),mem=poolMembers.find(pm=>pm.pool_id===currentPool.id&&pm.user_id===u.id);return `<div class="ranking"><div>${mem?.role==='admin'?'👑':'👤'}</div><div>${avatar(u)} ${safe(u.nick)}<br><span class="muted">${mem?.role||'user'} · ${s.total} pts</span></div><div><button class="small yellow" onclick="toggleAdmin('${u.id}','${mem?.role||'user'}','${safe(u.nick)}')">${mem?.role==='admin'?'Quitar admin':'Hacer admin'}</button><button class="small red" onclick="resetUserPredictions('${u.id}','${safe(u.nick)}')">Reset</button>${u.id!==currentUser.id?`<button class="small red" onclick="removeUserFromPool('${u.id}','${safe(u.nick)}')">Quitar</button>`:''}${currentUser.role==='admin'&&u.nick.toLowerCase()!=='admin'?`<button class="small red" onclick="deleteUser('${u.id}','${safe(u.nick)}')">Eliminar app</button>`:''}</div></div>`}).join('')}<h3>Resultados</h3>${matches.map(m=>`<div class="adminrow"><b>${safe(m.group_name)} · ${teamName(m.home_team)} vs ${teamName(m.away_team)}</b><div class="muted">${new Date(m.match_date).toLocaleString('es-ES')}</div><div class="score"><div><label>${teamName(m.home_team)}</label><input type="number" min="0" id="rh_${m.id}" value="${m.real_home??''}"></div><div style="font-weight:900;padding-bottom:17px">-</div><div><label>${teamName(m.away_team)}</label><input type="number" min="0" id="ra_${m.id}" value="${m.real_away??''}"></div></div><button class="small" onclick="saveReal('${m.id}')">Guardar resultado</button><button class="small red" onclick="resetReal('${m.id}')">Reset resultado</button><button class="small red" onclick="deletePredictionsByMatch('${m.id}')">Borrar pronósticos partido</button></div>`).join('')}</div>`}
-function render(){if(!supabaseReady)return renderNoConfig();app.innerHTML=`<div class="app">${hero()}${!currentUser?loginView():tabs()+(tab==='porras'?poolsView():tab==='partidos'?matchesView():tab==='normas'?rulesView():tab==='clasificacion'?rankingView():tab==='estadisticas'?statsView():tab==='chat'?chatView():tab==='historial'?historyView():adminView())}</div>`;if(!currentUser){document.querySelector('#loginBtn').onclick=login;document.querySelector('#registerBtn').onclick=register;document.querySelector('#recoverBtn').onclick=recoverPassword}}
-Object.assign(window,{setTab,logout,saveProfile,selectPool,createPool,joinPool,copyPoolInvite,togglePoolJoker,sendChatMessage,deleteChatMessage,removeUserFromPool,savePrediction,saveReal,resetReal,resetAllResults,deletePredictionsByMatch,deleteAllPredictions,deleteUser,resetUserPredictions,toggleAdmin,saveWinnerHistory,editPrediction,leavePool,updatePoolSettings})
+function archiveView(){
+  const list=archivedMatches();
+  if(!list.length)return `<div class="card"><h2>📦 Archivo</h2><p class="muted">Todavía no hay partidos archivados. Se archivarán automáticamente cuando hayan pasado más de 7 días desde el partido.</p></div>`;
+  return `
+    <div class="card">
+      <h2>📦 Archivo de partidos</h2>
+      <p class="muted">Aquí puedes consultar partidos antiguos, resultados, puntos y pronósticos.</p>
+      ${list.map(m=>{
+        const p=currentUser?.role==='admin'?null:pred(m.id);
+        const pt=p?pointsForPrediction(p,m):null;
+        return `
+          <div class="match">
+            <span class="group">${safe(m.group_name)}</span>
+            <div class="teams">${teamName(m.home_team)} vs ${teamName(m.away_team)}</div>
+            <div class="muted">${new Date(m.match_date).toLocaleString('es-ES')}</div>
+            <p>Resultado real: <b>${m.real_home===null?'Pendiente':m.real_home+' - '+m.real_away}</b></p>
+            ${currentUser?.role!=='admin'?`<p>Tu pronóstico: <b>${p?p.pred_home+' - '+p.pred_away:'Sin pronóstico'}</b> ${p?.is_joker?'<span class="badge-gold">🃏 Joker</span>':''} · Puntos: <b>${pt===null?'Pendiente':pt}</b></p>`:''}
+            ${currentPool?matchPoolPredictions(m.id):''}
+          </div>`;
+      }).join('')}
+    </div>`;
+}
+
+function render(){if(!supabaseReady)return renderNoConfig();app.innerHTML=`<div class="app">${hero()}${!currentUser?loginView():tabs()+(tab==='porras'?poolsView():tab==='partidos'?matchesView():tab==='normas'?rulesView():tab==='resultados'?globalResultsView():tab==='clasificacion'?rankingView():tab==='estadisticas'?statsView():tab==='chat'?chatView():tab==='historial'?historyView():tab==='archivo'?archiveView():adminView())}</div>`;if(!currentUser){document.querySelector('#loginBtn').onclick=login;document.querySelector('#registerBtn').onclick=register;document.querySelector('#recoverBtn').onclick=recoverPassword}}
+Object.assign(window,{setTab,logout,saveProfile,selectPool,createPool,joinPool,copyPoolInvite,togglePoolJoker,sendChatMessage,deleteChatMessage,removeUserFromPool,savePrediction,saveReal,resetReal,resetAllResults,deletePredictionsByMatch,deleteAllPredictions,deleteUser,resetUserPredictions,toggleAdmin,saveWinnerHistory,editPrediction,leavePool,updatePoolSettings,saveGlobalReal,resetGlobalReal})
 document.title='MI PORRA'
 restoreSession().then(ok=>{if(!ok)loadData()})
 
