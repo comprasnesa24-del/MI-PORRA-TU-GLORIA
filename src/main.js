@@ -103,12 +103,12 @@ async function loadData(doRender=true){if(!supabaseReady)return renderNoConfig()
 async function ensureDefaultPoolForUser(user){ return }
 
 async function register(){const nick=document.querySelector('#nick').value.trim(),password=document.querySelector('#password').value,email=document.querySelector('#email')?.value.trim()||'';if(!nick||!password)return alert('Pon nick y contraseña');const ex=await supabase.from('profiles').select('*').ilike('nick',nick).maybeSingle();if(ex.data)return alert('Ese nick ya existe');const ins=await supabase.from('profiles').insert({nick,password,email,role:'user'}).select().single();if(ins.error)return alert(ins.error.message);currentUser=ins.data;saveSession();await loadData();await ensureDefaultPoolForUser(currentUser);await loadData();const mem=poolMembers.filter(pm=>pm.user_id===currentUser.id);currentPool=pools.find(p=>p.id===mem[0]?.pool_id)||null;tab='porras';saveSession();document.title='MI PORRA';render()}
-async function login(){const nick=document.querySelector('#nick').value.trim(),password=document.querySelector('#password').value;const res=await supabase.from('profiles').select('*').ilike('nick',nick).eq('password',password).maybeSingle();if(!res.data)return alert('Nick o contraseña incorrectos');currentUser=res.data;saveSession();await loadData();await ensureDefaultPoolForUser(currentUser);await loadData();const mem=poolMembers.filter(pm=>pm.user_id===currentUser.id);currentPool=pools.find(p=>p.id===mem[0]?.pool_id)||null;tab=currentPool?'partidos':'porras';saveSession();document.title='MI PORRA';render()}
+async function login(){const nick=document.querySelector('#nick').value.trim(),password=document.querySelector('#password').value;const res=await supabase.from('profiles').select('*').ilike('nick',nick).eq('password',password).maybeSingle();if(!res.data)return alert('Nick o contraseña incorrectos');currentUser=res.data;saveSession();await loadData();await ensureDefaultPoolForUser(currentUser);await loadData();const mem=poolMembers.filter(pm=>pm.user_id===currentUser.id);currentPool=pools.find(p=>p.id===mem[0]?.pool_id)||null;tab=currentUser?.role==='admin'?'porras':(currentPool?'partidos':'porras');saveSession();document.title='MI PORRA';render()}
 async function recoverPassword(){const q=prompt('Escribe tu nick o email:');if(!q)return;const r=await supabase.from('profiles').select('*').or(`nick.ilike.${q},email.ilike.${q}`).maybeSingle();if(!r.data)return alert('No encontrado');alert(`Contraseña de ${r.data.nick}: ${r.data.password}`)}
 async function saveProfile(){const emoji=prompt('Emoji avatar',currentUser.avatar_emoji||'⚽');if(!emoji)return;const color=prompt('Color fondo',currentUser.avatar_color||'#22c55e');if(!color)return;await supabase.from('profiles').update({avatar_emoji:emoji,avatar_color:color}).eq('id',currentUser.id);currentUser={...currentUser,avatar_emoji:emoji,avatar_color:color};await loadData()}
 function logout(){currentUser=null;currentPool=null;tab='porras';saveSession();document.title='MI PORRA';render()}
 function setTab(t){tab=t;render()}
-function selectPool(id){currentPool=pools.find(p=>p.id===id)||null;tab=currentPool?'partidos':'porras';saveSession();document.title='MI PORRA';render()}
+function selectPool(id){currentPool=pools.find(p=>p.id===id)||null;tab=currentUser?.role==='admin'?'porras':(currentPool?'partidos':'porras');saveSession();document.title='MI PORRA';render()}
 async function createPool(){
   const name=prompt('Nombre de la porra privada:')
   if(!name)return
@@ -232,17 +232,18 @@ function renderNoConfig(){app.innerHTML=`<div class="app">${hero()}<div class="c
 function loginView(){return `<div class="card"><h2>Entrar</h2><p class="muted">Primero registra un usuario.</p><label>Nick</label><input id="nick" placeholder="admin"><label>Email opcional</label><input id="email" type="email"><label>Contraseña</label><input id="password" type="password"><button id="loginBtn">Entrar</button><button id="registerBtn" class="blue">Registrarme</button><button id="recoverBtn" class="yellow">Recordar contraseña</button></div>`}
 function tabs(){
   const poolLabel=currentPool?`<div class="card"><b>Porra actual:</b> ${safe(currentPool.name)} · Código: <b>${safe(currentPool.code)}</b>${currentPool.prizes?`<br><br><b>🏆 Premios:</b><br>${safe(currentPool.prizes).replace(/\n/g,'<br>')}`:''}</div>`:''
+
   const adminTabs = `
     <div class="tabs">
       <button onclick="window.setTab('porras')">Todas las porras</button>
-      <button class="blue" onclick="window.setTab('clasificacion')">Clasificación</button>
-      <button class="blue" onclick="window.setTab('estadisticas')">Estadísticas</button>
-      <button class="blue" onclick="window.setTab('chat')">Chat</button>
-      <button class="blue" onclick="window.setTab('historial')">Historial</button><button class="blue" onclick="window.setTab('archivo')">Archivo</button>
-      <button class="yellow" onclick="window.setTab('admin')">Admin</button>
+      <button class="yellow" onclick="window.setTab('resultados')">Resultados globales</button>
+      <button class="blue" onclick="window.setTab('archivo')">Archivo</button>
+      <button class="blue" onclick="window.setTab('historial')">Historial</button>
+      ${currentPool?`<button class="blue" onclick="window.setTab('clasificacion')">Clasificación</button><button class="blue" onclick="window.setTab('estadisticas')">Estadísticas</button><button class="blue" onclick="window.setTab('chat')">Chat</button><button class="yellow" onclick="window.setTab('admin')">Admin porra</button>`:''}
       <button class="red" onclick="window.logout()">Salir</button>
     </div>
   `
+
   const userTabs = `
     <div class="tabs">
       <button onclick="window.setTab('porras')">Mis porras</button>
@@ -251,13 +252,19 @@ function tabs(){
       <button class="blue" onclick="window.setTab('clasificacion')">Clasificación</button>
       <button class="blue" onclick="window.setTab('estadisticas')">Estadísticas</button>
       <button class="blue" onclick="window.setTab('chat')">Chat</button>
-      <button class="blue" onclick="window.setTab('historial')">Historial</button><button class="blue" onclick="window.setTab('archivo')">Archivo</button>
+      <button class="blue" onclick="window.setTab('historial')">Historial</button>
+      <button class="blue" onclick="window.setTab('archivo')">Archivo</button>
       <button class="red" onclick="window.logout()">Salir</button>
     </div>
   `
+
   return `
     ${currentUser?.role === 'admin' ? adminTabs : userTabs}
-    <div class="card"><h2>${avatar(currentUser)} Hola, ${safe(currentUser.nick)}</h2><p>${currentUser?.role === 'admin' ? 'Modo administrador: puedes controlar porras, usuarios y resultados oficiales. No participas en la clasificación.' : '“El Mundial pasa cada cuatro años; las bromas al último de la porra duran mucho más.”'}</p><button class="small blue" onclick="window.saveProfile()">Editar avatar</button></div>
+    <div class="card">
+      <h2>${avatar(currentUser)} Hola, ${safe(currentUser.nick)}</h2>
+      <p>${currentUser?.role === 'admin' ? 'Modo administrador: puedes poner resultados globales, controlar porras y revisar usuarios. No participas en la clasificación.' : 'El Mundial pasa cada cuatro años; las bromas al último de la porra duran mucho más.'}</p>
+      <button class="small blue" onclick="window.saveProfile()">Editar avatar</button>
+    </div>
     ${poolLabel}
   `
 }
