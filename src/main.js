@@ -75,35 +75,70 @@ function isGlobalAdmin(){ return currentUser?.role === 'admin' }
 function sign(a,b){if(a>b)return'1';if(a<b)return'2';return'X'}
 function basePoints(ph,pa,rh,ra){if(rh==null||ra==null)return null;if(ph===rh&&pa===ra)return 5;if((ph-pa)===(rh-ra))return 3;if(sign(ph,pa)===sign(rh,ra))return 2;return 0}
 function normTeam(v){return String(v||'').toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g,'').replace(/[^a-z0-9 ]/g,'').replace(/\s+/g,' ').trim()}
-const TEAM_ALIASES={"argentina":"ARG","brasil":"BRA","brazil":"BRA","espana":"ESP","españa":"ESP","spain":"ESP","francia":"FRA","france":"FRA","alemania":"GER","germany":"GER","inglaterra":"ENG","england":"ENG","portugal":"POR","belgica":"BEL","belgium":"BEL","paises bajos":"NED","netherlands":"NED","holanda":"NED","mexico":"MEX","canada":"CAN","estados unidos":"USA","usa":"USA","uruguay":"URU","colombia":"COL","croacia":"CRO","croatia":"CRO","marruecos":"MAR","morocco":"MAR","japon":"JPN","japan":"JPN","corea del sur":"KOR","south korea":"KOR","australia":"AUS","argelia":"ALG","algeria":"ALG","austria":"AUT","cabo verde":"CPV","cape verde":"CPV","costa de marfil":"CIV","cote divoire":"CIV","côte divoire":"CIV","bosnia":"BIH","bosnia and herzegovina":"BIH","congo":"COD","congo dr":"COD"}
-function teamCodeForName(name){const n=normTeam(name);if(TEAM_ALIASES[n])return TEAM_ALIASES[n];const found=teamPlayers.find(p=>normTeam(p.team_name)===n||normTeam(p.team_code)===n);return found?.team_code||null}
-function playersForMatch(m){const h=teamCodeForName(m.home_team),a=teamCodeForName(m.away_team);const codes=[h,a].filter(Boolean);return teamPlayers.filter(p=>codes.includes(p.team_code)).sort((x,y)=>(x.team_code+x.position+x.player_name).localeCompare(y.team_code+y.position+y.player_name))}
-function scorerSelectHtml(m,p,disabled){if(!currentPool?.enable_scorer)return '';const list=playersForMatch(m);if(!list.length)return `<label style="display:block;margin:10px 0">⚽ Pon un goleador del partido (+2 puntos)</label><input ${disabled?'disabled':''} id="scorer_${m.id}" value="${safe(p?.scorer_prediction||'')}" placeholder="Ejemplo: Mbappé">`;return `<label style="display:block;margin:10px 0">⚽ Goleador del partido (+2 puntos)</label><select id="scorer_${m.id}" ${disabled?'disabled':''} style="width:100%;font-size:18px;padding:15px;border:2px solid #dbe3ef;border-radius:17px"><option value="">Sin goleador</option>${list.map(pl=>`<option value="${safe(pl.player_name)}" ${p?.scorer_prediction===pl.player_name?'selected':''}>${safe(pl.team_code)} · ${safe(pl.player_name)} ${pl.position==='PO'?'(portero)':''}</option>`).join('')}</select>`}
-function realScorersHtml(m){const list=playersForMatch(m);if(!list.length)return `<label>Goleadores reales separados por coma</label><input id="real_scorers_${m.id}" value="${safe(m.real_scorers||'')}" placeholder="Ejemplo: Mbappé, Griezmann">`;const current=String(m.real_scorers||'').split(',').map(x=>normalizeScorer(x));return `<label>Goleadores reales</label><select id="real_scorers_${m.id}" multiple size="6" style="width:100%;font-size:16px;padding:12px;border:2px solid #dbe3ef;border-radius:17px">${list.map(pl=>`<option value="${safe(pl.player_name)}" ${current.includes(normalizeScorer(pl.player_name))?'selected':''}>${safe(pl.team_code)} · ${safe(pl.player_name)}</option>`).join('')}</select><p class="muted">Mantén Ctrl pulsado para seleccionar varios goleadores.</p>`}
-function selectedRealScorers(mid){const sel=document.querySelector('#real_scorers_'+mid)||document.querySelector('#real_scorers_admin_'+mid);if(!sel)return '';if(sel.tagName==='SELECT')return Array.from(sel.selectedOptions).map(o=>o.value).join(',');return sel.value||''}
-
-function normalizeScorer(v){return String(v||'').toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g,'').replace(/[^a-z0-9ñ ]/g,'').replace(/\s+/g,' ').trim()}
-function scorerPoints(p,m){if(!currentPool?.enable_scorer)return 0;if(!p?.scorer_prediction||!m?.real_scorers)return 0;const pick=normalizeScorer(p.scorer_prediction);const scorers=String(m.real_scorers).split(',').map(x=>normalizeScorer(x)).filter(Boolean);return scorers.includes(pick)?2:0}
-
-function pointsForPrediction(p,m){const b=basePoints(p.pred_home,p.pred_away,m.real_home,m.real_away);if(b==null)return null;return (p.is_joker?b*2:b)+scorerPoints(p,m)}
-function isArchivedMatch(m){const d=new Date(m.match_date).getTime();return Date.now()-d>7*24*60*60*1000}
-function activeMatches(){return matches.filter(m=>!isArchivedMatch(m))}
-function archivedMatches(){return matches.filter(m=>isArchivedMatch(m))}
-function isLocked(m){return new Date(m.match_date).getTime()<=Date.now()}
-function generateCode(){return Math.random().toString(36).substring(2,8).toUpperCase()}
-function myPoolMembership(){return currentUser&&currentPool?poolMembers.find(pm=>pm.user_id===currentUser.id&&pm.pool_id===currentPool.id):null}
-function canAdminPool(){ return currentUser?.role === 'admin' }
-
-function currentPoolMemberIds(){return currentPool?poolMembers.filter(pm=>pm.pool_id===currentPool.id).map(pm=>pm.user_id):[]}
-function poolUsers(){const ids=currentPoolMemberIds();return users.filter(u=>ids.includes(u.id))}
-function poolPredictions(){return currentPool?predictions.filter(p=>p.pool_id===currentPool.id):[]}
-function poolChat(){return currentPool?chatMessages.filter(m=>m.pool_id===currentPool.id):[]}
-function pred(mid){return poolPredictions().find(p=>p.user_id===currentUser?.id&&p.match_id===mid)}
-function jokerCount(){
-  return currentPool&&currentUser
-    ? poolPredictions().filter(p=>p.user_id===currentUser.id&&p.is_joker).length
-    : 0
+const TEAM_ALIASES={
+  "argelia":"ALG","algeria":"ALG","alg":"ALG",
+  "argentina":"ARG","arg":"ARG",
+  "australia":"AUS","aus":"AUS",
+  "austria":"AUT","aut":"AUT",
+  "belgica":"BEL","bélgica":"BEL","belgium":"BEL","bel":"BEL",
+  "bosnia":"BIH","bosnia y herzegovina":"BIH","bosnia and herzegovina":"BIH","bih":"BIH",
+  "brasil":"BRA","brazil":"BRA","bra":"BRA",
+  "cabo verde":"CPV","cape verde":"CPV","cpv":"CPV",
+  "canada":"CAN","canadá":"CAN","can":"CAN",
+  "colombia":"COL","col":"COL",
+  "congo":"COD","rd congo":"COD","congo dr":"COD","dr congo":"COD","república democrática del congo":"COD","republica democratica del congo":"COD","cod":"COD",
+  "costa de marfil":"CIV","côte divoire":"CIV","cote divoire":"CIV","civ":"CIV",
+  "croacia":"CRO","croatia":"CRO","cro":"CRO",
+  "curazao":"CUW","curaçao":"CUW","curacao":"CUW","cuw":"CUW",
+  "ecuador":"ECU","ecu":"ECU",
+  "egipto":"EGY","egypt":"EGY","egy":"EGY",
+  "inglaterra":"ENG","england":"ENG","eng":"ENG",
+  "francia":"FRA","france":"FRA","fra":"FRA",
+  "alemania":"GER","germany":"GER","ger":"GER",
+  "ghana":"GHA","gha":"GHA",
+  "haiti":"HAI","haití":"HAI","hai":"HAI",
+  "iran":"IRN","irán":"IRN","irn":"IRN",
+  "irak":"IRQ","iraq":"IRQ","irq":"IRQ",
+  "japon":"JPN","japón":"JPN","japan":"JPN","jpn":"JPN",
+  "jordania":"JOR","jordan":"JOR","jor":"JOR",
+  "marruecos":"MAR","morocco":"MAR","mar":"MAR",
+  "mexico":"MEX","méxico":"MEX","mex":"MEX",
+  "paises bajos":"NED","países bajos":"NED","holanda":"NED","netherlands":"NED","ned":"NED",
+  "nueva zelanda":"NZL","new zealand":"NZL","nzl":"NZL",
+  "noruega":"NOR","norway":"NOR","nor":"NOR",
+  "panama":"PAN","panamá":"PAN","pan":"PAN",
+  "paraguay":"PAR","par":"PAR",
+  "portugal":"POR","por":"POR",
+  "catar":"QAT","qatar":"QAT","qat":"QAT",
+  "arabia saudi":"KSA","arabia saudí":"KSA","saudi arabia":"KSA","ksa":"KSA",
+  "escocia":"SCO","scotland":"SCO","sco":"SCO",
+  "senegal":"SEN","sen":"SEN",
+  "corea del sur":"KOR","south korea":"KOR","korea republic":"KOR","república de corea":"KOR","republica de corea":"KOR","kor":"KOR",
+  "espana":"ESP","españa":"ESP","spain":"ESP","esp":"ESP",
+  "suecia":"SWE","sweden":"SWE","swe":"SWE",
+  "suiza":"SUI","switzerland":"SUI","sui":"SUI",
+  "tunez":"TUN","túnez":"TUN","tunisia":"TUN","tun":"TUN",
+  "turquia":"TUR","turquía":"TUR","turkey":"TUR","tur":"TUR",
+  "uruguay":"URU","uru":"URU",
+  "uzbekistan":"UZB","uzbekistán":"UZB","uzb":"UZB",
+  "estados unidos":"USA","eeuu":"USA","ee uu":"USA","united states":"USA","usa":"USA"
 }
+function teamCodeForName(name){const n=normTeam(name);if(TEAM_ALIASES[n])return TEAM_ALIASES[n];const found=teamPlayers.find(p=>normTeam(p.team_name)===n||normTeam(p.team_code)===n);return found?.team_code||null}
+function playersForMatch(m){
+  const h=teamCodeForName(m.home_team)
+  const a=teamCodeForName(m.away_team)
+  const codes=[h,a].filter(Boolean)
+
+  let list = codes.length
+    ? teamPlayers.filter(p=>codes.includes(p.team_code))
+    : teamPlayers
+
+  // Si solo reconoce un equipo, añade todos como apoyo para que nunca salga campo manual.
+  if(list.length===0) list = teamPlayers
+
+  return list.sort((x,y)=>(x.team_code+x.position+x.player_name).localeCompare(y.team_code+y.position+y.player_name))
+}
+
 function jokerLimit(){return 5}
 function jokerUsed(){return jokerCount()>=jokerLimit()}
 
