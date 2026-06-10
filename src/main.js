@@ -87,8 +87,43 @@ const TEAM_ALIASES={
 "tunez":"TUN","túnez":"TUN","tunisia":"TUN","tun":"TUN",
 "uzbekistan":"UZB","uzbekistán":"UZB","uzb":"UZB"
 }
-function teamCodeForName(name){const n=normTeam(name);if(TEAM_ALIASES[n])return TEAM_ALIASES[n];const f=teamPlayers.find(p=>normTeam(p.team_name)===n||normTeam(p.team_code)===n);return f?.team_code||null}
-function playersForMatch(m){const h=teamCodeForName(m.home_team),a=teamCodeForName(m.away_team);const codes=[h,a].filter(Boolean);return (codes.length?teamPlayers.filter(p=>codes.includes(p.team_code)):[]).sort((x,y)=>(x.team_code+x.position+x.player_name).localeCompare(y.team_code+y.position+y.player_name))}
+function teamCodeForName(name){
+  const n=normTeam(name)
+
+  // Primero busca directamente contra team_players, por si hemos cambiado team_name a español en Supabase.
+  const direct=teamPlayers.find(p=>normTeam(p.team_name)===n || normTeam(p.team_code)===n)
+  if(direct?.team_code)return direct.team_code
+
+  // Luego usa alias español/inglés.
+  if(TEAM_ALIASES[n])return TEAM_ALIASES[n]
+
+  // Último intento: coincidencia parcial segura.
+  const partial=teamPlayers.find(p=>{
+    const tn=normTeam(p.team_name)
+    return tn && (tn.includes(n) || n.includes(tn))
+  })
+  return partial?.team_code||null
+}
+
+function playersForMatch(m){
+  const h=teamCodeForName(m.home_team)
+  const a=teamCodeForName(m.away_team)
+  const codes=[h,a].filter(Boolean)
+
+  if(!codes.length)return []
+
+  const seen=new Set()
+  return teamPlayers
+    .filter(p=>codes.includes(p.team_code))
+    .filter(p=>{
+      const k=p.team_code+'_'+p.player_name
+      if(seen.has(k))return false
+      seen.add(k)
+      return true
+    })
+    .sort((x,y)=>(x.team_code+x.position+x.player_name).localeCompare(y.team_code+y.position+y.player_name))
+}
+
 function scorerSelectHtml(m,p,disabled){if(!currentPool?.enable_scorer)return'';const list=playersForMatch(m);if(!list.length)return `<label style="display:block;margin:10px 0">⚽ Pon un goleador del partido (+2 puntos)</label><input ${disabled?'disabled':''} id="scorer_${m.id}" value="${safe(p?.scorer_prediction||'')}" placeholder="Ejemplo: Messi"><p class="muted">Si no sale desplegable, ese equipo no tiene plantilla del Mundial cargada o es un partido que no es del Mundial.</p>`;return `<label style="display:block;margin:10px 0">⚽ Goleador del partido (+2 puntos)</label><select id="scorer_${m.id}" ${disabled?'disabled':''} style="width:100%;font-size:18px;padding:15px;border:2px solid #dbe3ef;border-radius:17px"><option value="">Sin goleador</option>${list.map(pl=>`<option value="${safe(pl.player_name)}" ${p?.scorer_prediction===pl.player_name?'selected':''}>${safe(pl.team_code)} · ${safe(pl.player_name)} ${pl.position==='PO'?'(portero)':''}</option>`).join('')}</select>`}
 function realScorersHtml(m){const list=playersForMatch(m);if(!list.length)return `<label>Goleadores reales separados por coma</label><input id="real_scorers_${m.id}" value="${safe(m.real_scorers||'')}" placeholder="Ejemplo: Messi, J. ALVAREZ">`;const current=String(m.real_scorers||'').split(',').map(x=>normalizeScorer(x));return `<label>Goleadores reales</label><select id="real_scorers_${m.id}" multiple size="6" style="width:100%;font-size:16px;padding:12px;border:2px solid #dbe3ef;border-radius:17px">${list.map(pl=>`<option value="${safe(pl.player_name)}" ${current.includes(normalizeScorer(pl.player_name))?'selected':''}>${safe(pl.team_code)} · ${safe(pl.player_name)}</option>`).join('')}</select><p class="muted">Mantén Ctrl pulsado para seleccionar varios goleadores.</p>`}
 function selectedRealScorers(mid){const sel=document.querySelector('#real_scorers_'+mid);if(!sel)return'';return sel.tagName==='SELECT'?Array.from(sel.selectedOptions).map(o=>o.value).join(','):(sel.value||'')}
