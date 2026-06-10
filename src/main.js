@@ -37,6 +37,72 @@ function clearSession(){try{localStorage.removeItem(SESSION_KEY)}catch(e){}}
 function teamName(v){return safe(v)}
 
 function normTeam(v){return String(v||'').toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g,'').replace(/[^a-z0-9 ]/g,'').replace(/\s+/g,' ').trim()}
+const MATCH_TEAM_CODES={
+"alemania":"GER",
+"curazao":"CUW",
+"costa de marfil":"CIV",
+"arabia saudi":"KSA",
+"arabia saudí":"KSA",
+"uruguay":"URU",
+"argelia":"ALG",
+"austria":"AUT",
+"argentina":"ARG",
+"australia":"AUS",
+"turquia":"TUR",
+"turquía":"TUR",
+"jordania":"JOR",
+"belgica":"BEL",
+"bélgica":"BEL",
+"egipto":"EGY",
+"iran":"IRN",
+"irán":"IRN",
+"bosnia y herzegovina":"BIH",
+"catar":"QAT",
+"brasil":"BRA",
+"marruecos":"MAR",
+"haiti":"HAI",
+"haití":"HAI",
+"cabo verde":"CPV",
+"canada":"CAN",
+"canadá":"CAN",
+"suiza":"SUI",
+"colombia":"COL",
+"rd congo":"COD",
+"corea del sur":"KOR",
+"republica checa":"CZE",
+"república checa":"CZE",
+"croacia":"CRO",
+"ecuador":"ECU",
+"escocia":"SCO",
+"espana":"ESP",
+"españa":"ESP",
+"estados unidos":"USA",
+"francia":"FRA",
+"ghana":"GHA",
+"inglaterra":"ENG",
+"irak":"IRQ",
+"japon":"JPN",
+"japón":"JPN",
+"mexico":"MEX",
+"méxico":"MEX",
+"noruega":"NOR",
+"nueva zelanda":"NZL",
+"paises bajos":"NED",
+"países bajos":"NED",
+"panama":"PAN",
+"panamá":"PAN",
+"paraguay":"PAR",
+"portugal":"POR",
+"senegal":"SEN",
+"sudafrica":"RSA",
+"sudáfrica":"RSA",
+"suecia":"SWE",
+"tunez":"TUN",
+"túnez":"TUN",
+"uzbekistan":"UZB",
+"uzbekistán":"UZB"
+}
+
 const TEAM_ALIASES={
 "alemania":"GER","germany":"GER","ger":"GER",
 "curazao":"CUW","curaçao":"CUW","curacao":"CUW","cuw":"CUW",
@@ -90,20 +156,24 @@ const TEAM_ALIASES={
 function teamCodeForName(name){
   const n=normTeam(name)
 
-  // Primero busca directamente contra team_players, por si hemos cambiado team_name a español en Supabase.
+  // 1) Primero: nombres EXACTOS de tus partidos en español.
+  if(MATCH_TEAM_CODES[n])return MATCH_TEAM_CODES[n]
+
+  // 2) Luego: alias español/inglés.
+  if(TEAM_ALIASES[n])return TEAM_ALIASES[n]
+
+  // 3) Luego: nombre guardado en Supabase team_players.
   const direct=teamPlayers.find(p=>normTeam(p.team_name)===n || normTeam(p.team_code)===n)
   if(direct?.team_code)return direct.team_code
 
-  // Luego usa alias español/inglés.
-  if(TEAM_ALIASES[n])return TEAM_ALIASES[n]
-
-  // Último intento: coincidencia parcial segura.
+  // 4) Último intento: coincidencia parcial segura.
   const partial=teamPlayers.find(p=>{
     const tn=normTeam(p.team_name)
     return tn && (tn.includes(n) || n.includes(tn))
   })
   return partial?.team_code||null
 }
+
 
 function playersForMatch(m){
   const h=teamCodeForName(m.home_team)
@@ -124,7 +194,8 @@ function playersForMatch(m){
     .sort((x,y)=>(x.team_code+x.position+x.player_name).localeCompare(y.team_code+y.position+y.player_name))
 }
 
-function scorerSelectHtml(m,p,disabled){if(!currentPool?.enable_scorer)return'';const list=playersForMatch(m);if(!list.length)return `<label style="display:block;margin:10px 0">⚽ Pon un goleador del partido (+2 puntos)</label><input ${disabled?'disabled':''} id="scorer_${m.id}" value="${safe(p?.scorer_prediction||'')}" placeholder="Ejemplo: Messi"><p class="muted">Si no sale desplegable, ese equipo no tiene plantilla del Mundial cargada o es un partido que no es del Mundial.</p>`;return `<label style="display:block;margin:10px 0">⚽ Goleador del partido (+2 puntos)</label><select id="scorer_${m.id}" ${disabled?'disabled':''} style="width:100%;font-size:18px;padding:15px;border:2px solid #dbe3ef;border-radius:17px"><option value="">Sin goleador</option>${list.map(pl=>`<option value="${safe(pl.player_name)}" ${p?.scorer_prediction===pl.player_name?'selected':''}>${safe(pl.team_code)} · ${safe(pl.player_name)} ${pl.position==='PO'?'(portero)':''}</option>`).join('')}</select>`}
+
+function scorerSelectHtml(m,p,disabled){if(!currentPool?.enable_scorer)return'';const list=playersForMatch(m);if(!list.length)return `<label style="display:block;margin:10px 0">⚽ Pon un goleador del partido (+2 puntos)</label><input ${disabled?'disabled':''} id="scorer_${m.id}" value="${safe(p?.scorer_prediction||'')}" placeholder="Ejemplo: Messi"><p class="muted">No hay plantilla encontrada para este partido. Código local: ${teamCodeForName(m.home_team)||'NO'} · Código visitante: ${teamCodeForName(m.away_team)||'NO'} · Jugadores cargados: ${teamPlayers.length}</p>`;return `<label style="display:block;margin:10px 0">⚽ Goleador del partido (+2 puntos)</label><select id="scorer_${m.id}" ${disabled?'disabled':''} style="width:100%;font-size:18px;padding:15px;border:2px solid #dbe3ef;border-radius:17px"><option value="">Sin goleador</option>${list.map(pl=>`<option value="${safe(pl.player_name)}" ${p?.scorer_prediction===pl.player_name?'selected':''}>${safe(pl.team_code)} · ${safe(pl.player_name)} ${pl.position==='PO'?'(portero)':''}</option>`).join('')}</select>`}
 function realScorersHtml(m){const list=playersForMatch(m);if(!list.length)return `<label>Goleadores reales separados por coma</label><input id="real_scorers_${m.id}" value="${safe(m.real_scorers||'')}" placeholder="Ejemplo: Messi, J. ALVAREZ">`;const current=String(m.real_scorers||'').split(',').map(x=>normalizeScorer(x));return `<label>Goleadores reales</label><select id="real_scorers_${m.id}" multiple size="6" style="width:100%;font-size:16px;padding:12px;border:2px solid #dbe3ef;border-radius:17px">${list.map(pl=>`<option value="${safe(pl.player_name)}" ${current.includes(normalizeScorer(pl.player_name))?'selected':''}>${safe(pl.team_code)} · ${safe(pl.player_name)}</option>`).join('')}</select><p class="muted">Mantén Ctrl pulsado para seleccionar varios goleadores.</p>`}
 function selectedRealScorers(mid){const sel=document.querySelector('#real_scorers_'+mid);if(!sel)return'';return sel.tagName==='SELECT'?Array.from(sel.selectedOptions).map(o=>o.value).join(','):(sel.value||'')}
 
