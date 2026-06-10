@@ -20,7 +20,7 @@ function normalizeScorer(v){return String(v||'').toLowerCase().normalize('NFD').
 function scorerPoints(p,m){if(!currentPool?.enable_scorer||!p?.scorer_prediction||!m?.real_scorers)return 0;const pick=normalizeScorer(p.scorer_prediction);const scorers=String(m.real_scorers).split(',').map(x=>normalizeScorer(x)).filter(Boolean);return scorers.includes(pick)?2:0}
 function pointsForPrediction(p,m){const b=basePoints(p.pred_home,p.pred_away,m.real_home,m.real_away);return b==null?null:(p.is_joker?b*2:b)+scorerPoints(p,m)}
 function isLocked(m){return new Date(m.match_date).getTime()<=Date.now()}
-function isArchivedMatch(m){return Date.now()-new Date(m.match_date).getTime()>7*24*60*60*1000}
+function isArchivedMatch(m){return Date.now()-new Date(m.match_date).getTime()>24*60*60*1000}
 function activeMatches(){return matches.filter(m=>!isArchivedMatch(m))}
 function archivedMatches(){return matches.filter(m=>isArchivedMatch(m))}
 function currentPoolMemberIds(){return currentPool?poolMembers.filter(pm=>pm.pool_id===currentPool.id).map(pm=>pm.user_id):[]}
@@ -37,59 +37,10 @@ function clearSession(){try{localStorage.removeItem(SESSION_KEY)}catch(e){}}
 function teamName(v){return safe(v)}
 
 function normTeam(v){return String(v||'').toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g,'').replace(/[^a-z0-9 ]/g,'').replace(/\s+/g,' ').trim()}
-const TEAM_ALIASES={
-"alemania":"GER","germany":"GER","ger":"GER",
-"curazao":"CUW","curaçao":"CUW","curacao":"CUW","cuw":"CUW",
-"costa de marfil":"CIV","côte d'ivoire":"CIV","côte divoire":"CIV","cote divoire":"CIV","ivory coast":"CIV","civ":"CIV",
-"arabia saudi":"KSA","arabia saudí":"KSA","saudi arabia":"KSA","ksa":"KSA",
-"uruguay":"URU","uru":"URU",
-"argelia":"ALG","algeria":"ALG","alg":"ALG",
-"austria":"AUT","aut":"AUT",
-"argentina":"ARG","arg":"ARG",
-"australia":"AUS","aus":"AUS",
-"turquia":"TUR","turquía":"TUR","turkey":"TUR","türkiye":"TUR","turkiye":"TUR","tur":"TUR",
-"jordania":"JOR","jordan":"JOR","jor":"JOR",
-"belgica":"BEL","bélgica":"BEL","belgium":"BEL","bel":"BEL",
-"egipto":"EGY","egypt":"EGY","egy":"EGY",
-"iran":"IRN","irán":"IRN","ir iran":"IRN","irn":"IRN",
-"bosnia y herzegovina":"BIH","bosnia and herzegovina":"BIH","bosnia":"BIH","bih":"BIH",
-"catar":"QAT","qatar":"QAT","qat":"QAT",
-"brasil":"BRA","brazil":"BRA","bra":"BRA",
-"marruecos":"MAR","morocco":"MAR","mar":"MAR",
-"haiti":"HAI","haití":"HAI","hai":"HAI",
-"cabo verde":"CPV","cape verde":"CPV","cpv":"CPV",
-"canada":"CAN","canadá":"CAN","can":"CAN",
-"suiza":"SUI","switzerland":"SUI","sui":"SUI",
-"colombia":"COL","col":"COL",
-"rd congo":"COD","congo dr":"COD","dr congo":"COD","congo":"COD","republica democratica del congo":"COD","república democrática del congo":"COD","cod":"COD",
-"corea del sur":"KOR","korea republic":"KOR","south korea":"KOR","republica de corea":"KOR","república de corea":"KOR","kor":"KOR",
-"republica checa":"CZE","república checa":"CZE","czechia":"CZE","czech republic":"CZE","cze":"CZE",
-"croacia":"CRO","croatia":"CRO","cro":"CRO",
-"ecuador":"ECU","ecu":"ECU",
-"escocia":"SCO","scotland":"SCO","sco":"SCO",
-"espana":"ESP","españa":"ESP","spain":"ESP","esp":"ESP",
-"estados unidos":"USA","eeuu":"USA","ee uu":"USA","united states":"USA","usa":"USA",
-"francia":"FRA","france":"FRA","fra":"FRA",
-"ghana":"GHA","gha":"GHA",
-"inglaterra":"ENG","england":"ENG","eng":"ENG",
-"irak":"IRQ","iraq":"IRQ","irq":"IRQ",
-"japon":"JPN","japón":"JPN","japan":"JPN","jpn":"JPN",
-"mexico":"MEX","méxico":"MEX","mex":"MEX",
-"noruega":"NOR","norway":"NOR","nor":"NOR",
-"nueva zelanda":"NZL","new zealand":"NZL","nzl":"NZL",
-"paises bajos":"NED","países bajos":"NED","holanda":"NED","netherlands":"NED","ned":"NED",
-"panama":"PAN","panamá":"PAN","pan":"PAN",
-"paraguay":"PAR","par":"PAR",
-"portugal":"POR","por":"POR",
-"senegal":"SEN","sen":"SEN",
-"sudafrica":"RSA","sudáfrica":"RSA","south africa":"RSA","rsa":"RSA",
-"suecia":"SWE","sweden":"SWE","swe":"SWE",
-"tunez":"TUN","túnez":"TUN","tunisia":"TUN","tun":"TUN",
-"uzbekistan":"UZB","uzbekistán":"UZB","uzb":"UZB"
-}
+const TEAM_ALIASES={"argentina":"ARG","arg":"ARG","canada":"CAN","canadá":"CAN","can":"CAN","brasil":"BRA","brazil":"BRA","bra":"BRA","espana":"ESP","españa":"ESP","spain":"ESP","esp":"ESP","francia":"FRA","france":"FRA","fra":"FRA","alemania":"GER","germany":"GER","ger":"GER","inglaterra":"ENG","england":"ENG","eng":"ENG","portugal":"POR","belgica":"BEL","bélgica":"BEL","belgium":"BEL","paises bajos":"NED","países bajos":"NED","holanda":"NED","netherlands":"NED","mexico":"MEX","méxico":"MEX","usa":"USA","estados unidos":"USA","eeuu":"USA","uruguay":"URU","colombia":"COL","croacia":"CRO","croatia":"CRO","marruecos":"MAR","morocco":"MAR","japon":"JPN","japón":"JPN","japan":"JPN","corea del sur":"KOR","south korea":"KOR","australia":"AUS","argelia":"ALG","algeria":"ALG","austria":"AUT","cabo verde":"CPV","costa de marfil":"CIV","cote divoire":"CIV","congo":"COD","congo dr":"COD","bosnia":"BIH","bosnia y herzegovina":"BIH","ghana":"GHA","egipto":"EGY","egypt":"EGY","iran":"IRN","irán":"IRN","iraq":"IRQ","irak":"IRQ","noruega":"NOR","norway":"NOR","senegal":"SEN","suiza":"SUI","switzerland":"SUI","tunez":"TUN","túnez":"TUN","turquia":"TUR","turquía":"TUR","uzbekistan":"UZB","uzbekistán":"UZB","qatar":"QAT","catar":"QAT","arabia saudi":"KSA","arabia saudí":"KSA","saudi arabia":"KSA","paraguay":"PAR","panama":"PAN","panamá":"PAN","ecuador":"ECU"}
 function teamCodeForName(name){const n=normTeam(name);if(TEAM_ALIASES[n])return TEAM_ALIASES[n];const f=teamPlayers.find(p=>normTeam(p.team_name)===n||normTeam(p.team_code)===n);return f?.team_code||null}
 function playersForMatch(m){const h=teamCodeForName(m.home_team),a=teamCodeForName(m.away_team);const codes=[h,a].filter(Boolean);return (codes.length?teamPlayers.filter(p=>codes.includes(p.team_code)):[]).sort((x,y)=>(x.team_code+x.position+x.player_name).localeCompare(y.team_code+y.position+y.player_name))}
-function scorerSelectHtml(m,p,disabled){if(!currentPool?.enable_scorer)return'';const list=playersForMatch(m);if(!list.length)return `<label style="display:block;margin:10px 0">⚽ Pon un goleador del partido (+2 puntos)</label><input ${disabled?'disabled':''} id="scorer_${m.id}" value="${safe(p?.scorer_prediction||'')}" placeholder="Ejemplo: Messi"><p class="muted">Si no sale desplegable, ese equipo no tiene plantilla del Mundial cargada o es un partido que no es del Mundial.</p>`;return `<label style="display:block;margin:10px 0">⚽ Goleador del partido (+2 puntos)</label><select id="scorer_${m.id}" ${disabled?'disabled':''} style="width:100%;font-size:18px;padding:15px;border:2px solid #dbe3ef;border-radius:17px"><option value="">Sin goleador</option>${list.map(pl=>`<option value="${safe(pl.player_name)}" ${p?.scorer_prediction===pl.player_name?'selected':''}>${safe(pl.team_code)} · ${safe(pl.player_name)} ${pl.position==='PO'?'(portero)':''}</option>`).join('')}</select>`}
+function scorerSelectHtml(m,p,disabled){if(!currentPool?.enable_scorer)return'';const list=playersForMatch(m);if(!list.length)return `<label style="display:block;margin:10px 0">⚽ Pon un goleador del partido (+2 puntos)</label><input ${disabled?'disabled':''} id="scorer_${m.id}" value="${safe(p?.scorer_prediction||'')}" placeholder="Ejemplo: Messi"><p class="muted">Si no sale desplegable, el nombre del equipo no coincide con la plantilla.</p>`;return `<label style="display:block;margin:10px 0">⚽ Goleador del partido (+2 puntos)</label><select id="scorer_${m.id}" ${disabled?'disabled':''} style="width:100%;font-size:18px;padding:15px;border:2px solid #dbe3ef;border-radius:17px"><option value="">Sin goleador</option>${list.map(pl=>`<option value="${safe(pl.player_name)}" ${p?.scorer_prediction===pl.player_name?'selected':''}>${safe(pl.team_code)} · ${safe(pl.player_name)} ${pl.position==='PO'?'(portero)':''}</option>`).join('')}</select>`}
 function realScorersHtml(m){const list=playersForMatch(m);if(!list.length)return `<label>Goleadores reales separados por coma</label><input id="real_scorers_${m.id}" value="${safe(m.real_scorers||'')}" placeholder="Ejemplo: Messi, J. ALVAREZ">`;const current=String(m.real_scorers||'').split(',').map(x=>normalizeScorer(x));return `<label>Goleadores reales</label><select id="real_scorers_${m.id}" multiple size="6" style="width:100%;font-size:16px;padding:12px;border:2px solid #dbe3ef;border-radius:17px">${list.map(pl=>`<option value="${safe(pl.player_name)}" ${current.includes(normalizeScorer(pl.player_name))?'selected':''}>${safe(pl.team_code)} · ${safe(pl.player_name)}</option>`).join('')}</select><p class="muted">Mantén Ctrl pulsado para seleccionar varios goleadores.</p>`}
 function selectedRealScorers(mid){const sel=document.querySelector('#real_scorers_'+mid);if(!sel)return'';return sel.tagName==='SELECT'?Array.from(sel.selectedOptions).map(o=>o.value).join(','):(sel.value||'')}
 
