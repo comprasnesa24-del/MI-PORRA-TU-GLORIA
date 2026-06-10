@@ -140,11 +140,37 @@ function playersForMatch(m){
     .sort((x,y)=>(x.team_code+x.position+x.player_name).localeCompare(y.team_code+y.position+y.player_name))
 }
 
-function scorerSelectHtml(m,p,disabled){if(!currentPool?.enable_scorer)return'';const list=playersForMatch(m);if(!list.length)return `<label style="display:block;margin:10px 0">⚽ Pon un goleador del partido (+2 puntos)</label><input ${disabled?'disabled':''} id="scorer_${m.id}" value="${safe(p?.scorer_prediction||'')}" placeholder="Ejemplo: Messi"><p class="muted">Si no sale desplegable, ese equipo no tiene plantilla del Mundial cargada o es un partido que no es del Mundial.</p>`;return `<label style="display:block;margin:10px 0">⚽ Goleador del partido (+2 puntos)</label><select id="scorer_${m.id}" ${disabled?'disabled':''} style="width:100%;font-size:18px;padding:15px;border:2px solid #dbe3ef;border-radius:17px"><option value="">Sin goleador</option>${list.map(pl=>`<option value="${safe(pl.player_name)}" ${p?.scorer_prediction===pl.player_name?'selected':''}>${safe(pl.team_code)} · ${safe(pl.player_name)} ${pl.position==='PO'?'(portero)':''}</option>`).join('')}</select>`}
+function scorerSelectHtml(m,p,disabled){if(!currentPool?.enable_scorer)return'';const list=playersForMatch(m);if(!list.length)return `<label style="display:block;margin:10px 0">⚽ Pon un goleador del partido (+2 puntos)</label><input ${disabled?'disabled':''} id="scorer_${m.id}" value="${safe(p?.scorer_prediction||'')}" placeholder="Ejemplo: Messi"><p class="muted">No hay desplegable. Código local: ${teamCodeForName(m.home_team)||'NO'} · Código visitante: ${teamCodeForName(m.away_team)||'NO'} · Jugadores cargados: ${teamPlayers.length}</p>`;return `<label style="display:block;margin:10px 0">⚽ Goleador del partido (+2 puntos)</label><select id="scorer_${m.id}" ${disabled?'disabled':''} style="width:100%;font-size:18px;padding:15px;border:2px solid #dbe3ef;border-radius:17px"><option value="">Sin goleador</option>${list.map(pl=>`<option value="${safe(pl.player_name)}" ${p?.scorer_prediction===pl.player_name?'selected':''}>${safe(pl.team_code)} · ${safe(pl.player_name)} ${pl.position==='PO'?'(portero)':''}</option>`).join('')}</select>`}
 function realScorersHtml(m){const list=playersForMatch(m);if(!list.length)return `<label>Goleadores reales separados por coma</label><input id="real_scorers_${m.id}" value="${safe(m.real_scorers||'')}" placeholder="Ejemplo: Messi, J. ALVAREZ">`;const current=String(m.real_scorers||'').split(',').map(x=>normalizeScorer(x));return `<label>Goleadores reales</label><select id="real_scorers_${m.id}" multiple size="6" style="width:100%;font-size:16px;padding:12px;border:2px solid #dbe3ef;border-radius:17px">${list.map(pl=>`<option value="${safe(pl.player_name)}" ${current.includes(normalizeScorer(pl.player_name))?'selected':''}>${safe(pl.team_code)} · ${safe(pl.player_name)}</option>`).join('')}</select><p class="muted">Mantén Ctrl pulsado para seleccionar varios goleadores.</p>`}
 function selectedRealScorers(mid){const sel=document.querySelector('#real_scorers_'+mid);if(!sel)return'';return sel.tagName==='SELECT'?Array.from(sel.selectedOptions).map(o=>o.value).join(','):(sel.value||'')}
 
-async function loadData(doRender=true){if(!supabaseReady)return renderNoConfig();const [u,p,pm,m,pr,msg,tp]=await Promise.all([supabase.from('profiles').select('*'),supabase.from('pools').select('*').order('created_at',{ascending:false}),supabase.from('pool_members').select('*'),supabase.from('matches').select('*').order('match_date'),supabase.from('predictions').select('*'),supabase.from('messages').select('*').order('created_at',{ascending:true}).limit(200),supabase.from('team_players').select('*').range(0,1999)]);users=u.data||[];pools=p.data||[];poolMembers=pm.data||[];matches=m.data||[];predictions=pr.data||[];messages=msg.data||[];teamPlayers=tp.data||[];if(currentUser)currentUser=users.find(x=>x.id===currentUser.id)||currentUser;if(currentPool)currentPool=pools.find(x=>x.id===currentPool.id)||currentPool;if(doRender)render()}
+async function loadData(doRender=true){
+  if(!supabaseReady)return renderNoConfig();
+
+  const [u,p,pm,m,pr,msg,tp1,tp2]=await Promise.all([
+    supabase.from('profiles').select('*'),
+    supabase.from('pools').select('*').order('created_at',{ascending:false}),
+    supabase.from('pool_members').select('*'),
+    supabase.from('matches').select('*').order('match_date'),
+    supabase.from('predictions').select('*'),
+    supabase.from('messages').select('*').order('created_at',{ascending:true}).limit(200),
+    supabase.from('team_players').select('*').range(0,999),
+    supabase.from('team_players').select('*').range(1000,1999)
+  ]);
+
+  users=u.data||[];
+  pools=p.data||[];
+  poolMembers=pm.data||[];
+  matches=m.data||[];
+  predictions=pr.data||[];
+  messages=msg.data||[];
+  teamPlayers=[...(tp1.data||[]),...(tp2.data||[])];
+
+  if(currentUser)currentUser=users.find(x=>x.id===currentUser.id)||currentUser;
+  if(currentPool)currentPool=pools.find(x=>x.id===currentPool.id)||currentPool;
+  if(doRender)render();
+}
+
 async function restoreSession(){try{const raw=localStorage.getItem(SESSION_KEY);if(!raw)return false;const s=JSON.parse(raw);if(!s.userId)return false;await loadData(false);currentUser=users.find(u=>u.id===s.userId)||null;if(!currentUser){clearSession();return false}currentPool=pools.find(p=>p.id===s.poolId)||null;tab=currentUser.role==='admin'?'porras':(currentPool?'partidos':'porras');render();return true}catch(e){clearSession();return false}}
 function renderNoConfig(){app.innerHTML='<div class="app"><div class="card"><h1>Falta configurar Supabase</h1></div></div>'}
 function loginView(){return `<div class="app"><div class="hero"><div><div class="kicker">MUNDIAL · APP PRIVADA</div><h1>Mi Porra<br><span>Tu Gloria</span></h1><p>Acierta el marcador, suma puntos y presume en la clasificación.</p></div><div class="ball">⚽</div></div><div class="card"><h2>Entrar</h2><label>Nick</label><input id="nick"><label>Email opcional</label><input id="email"><label>Contraseña</label><input id="pass" type="password"><button onclick="window.login()">Entrar</button><button class="blue" onclick="window.register()">Registrarme</button></div></div>`}
