@@ -80,3 +80,8 @@ padding:15px;
 margin:10px 0;
 font-weight:900;
 }
+
+.taunts{display:flex;flex-wrap:wrap;gap:5px;margin:8px 0 4px}
+.taunt{display:inline-block;border-radius:999px;padding:5px 9px;font-size:12px;font-weight:900}
+.taunt.good{background:#dcfce7;color:#166534}
+.taunt.bad{background:#fee2e2;color:#991b1b}
