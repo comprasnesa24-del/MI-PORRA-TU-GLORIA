@@ -9,6 +9,7 @@ const SESSION_KEY='mi_porra_session_clean_v1'
 
 let currentUser=null,currentPool=null,tab='porras'
 let users=[],pools=[],poolMembers=[],matches=[],predictions=[],messages=[],teamPlayers=[]
+let messagesLoadError=''
 const ADMIN_NICK='admin', ADMIN_PASSWORD='968085070'
 
 function safe(v){return String(v??'').replace(/[&<>"']/g,m=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#039;'}[m]))}
@@ -35,6 +36,7 @@ function canAdminPool(){return currentUser?.role==='admin'}
 function saveSession(){try{localStorage.setItem(SESSION_KEY,JSON.stringify({userId:currentUser?.id||null,poolId:currentPool?.id||null}))}catch(e){}}
 function clearSession(){try{localStorage.removeItem(SESSION_KEY)}catch(e){}}
 function teamName(v){return safe(v)}
+function messageText(m){return m?.body??m?.content??m?.message??m?.text??''}
 
 function normTeam(v){return String(v||'').toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g,'').replace(/[^a-z0-9 ]/g,'').replace(/\s+/g,' ').trim()}
 const MATCH_TEAM_CODES={
@@ -164,6 +166,7 @@ async function loadData(doRender=true){
   matches=m.data||[];
   predictions=pr.data||[];
   messages=msg.data||[];
+  messagesLoadError=msg.error?.message||'';
   teamPlayers=[...(tp1.data||[]),...(tp2.data||[])];
 
   if(currentUser)currentUser=users.find(x=>x.id===currentUser.id)||currentUser;
@@ -219,16 +222,18 @@ function chatView(){
   if(!currentPool)return poolsView();
   const ms=messages.filter(m=>String(m.pool_id)===String(currentPool.id));
   return `<div class="card">
+    ${messagesLoadError?`<div class="notice"><b>El chat necesita configurarse en Supabase.</b><br>${safe(messagesLoadError)}</div>`:''}
     <h2>💬 Chat</h2>
     <div class="match">
       ${ms.map(m=>{
         const u=users.find(u=>String(u.id)===String(m.user_id));
-        const txt=m.body??m.content??m.message??m.text??'';
+        const txt=messageText(m);
         return `<p><b>${safe(u?.nick||'Usuario')}:</b> ${safe(txt)}</p>`
       }).join('')||'<p class="muted">Sin mensajes.</p>'}
     </div>
-    <input id="chatmsg" placeholder="Mensaje">
+    <input id="chatmsg" placeholder="Mensaje" onkeydown="if(event.key==='Enter')window.sendMessage()">
     <button onclick="window.sendMessage()">Enviar</button>
+    <button class="small blue" onclick="window.refreshChat()">Actualizar chat</button>
   </div>`
 }
 
@@ -238,11 +243,13 @@ async function sendMessage(){
   if(!body)return alert('Escribe un mensaje');
   if(!currentPool)return alert('Selecciona una porra');
 
-  const ins=await supabase.from('messages').insert({
-    pool_id:currentPool.id,
-    user_id:currentUser.id,
-    body
-  });
+  const base={pool_id:currentPool.id,user_id:currentUser.id};
+  let ins=null;
+  for(const column of ['body','content','message','text']){
+    ins=await supabase.from('messages').insert({...base,[column]:body});
+    if(!ins.error)break;
+    if(!/column|schema cache|null value/i.test(ins.error.message||''))break;
+  }
 
   if(ins.error){
     alert('Error al enviar mensaje: '+ins.error.message);
@@ -253,6 +260,8 @@ async function sendMessage(){
   await loadData();
 }
 
+async function refreshChat(){await loadData()}
+
 function historyView(){return `<div class="card"><h2>📜 Historial</h2>${matches.filter(m=>m.real_home!==null&&!isArchivedMatch(m)).map(m=>`<div class="match"><b>${teamName(m.home_team)} ${m.real_home} - ${m.real_away} ${teamName(m.away_team)}</b><div class="muted">${new Date(m.match_date).toLocaleString('es-ES')}</div></div>`).join('')||'<p class="muted">Sin resultados recientes.</p>'}</div>`}
 function archiveView(){const list=archivedMatches();return `<div class="card"><h2>📦 Partidos completados</h2>${list.map(m=>`<div class="match"><span class="group">${safe(m.group_name)}</span><div class="teams">${teamName(m.home_team)} vs ${teamName(m.away_team)}</div><p>Resultado: <b>${m.real_home===null?'Pendiente':m.real_home+' - '+m.real_away}</b></p>${currentPool?matchPoolPredictions(m.id):''}</div>`).join('')||'<p class="muted">Sin partidos completados.</p>'}</div>`}
 function globalResultsView(){if(currentUser?.role!=='admin')return `<div class="card"><h2>Acceso no permitido</h2></div>`;const list=activeMatches();const renderMatch=m=>`<div class="adminrow"><b>${safe(m.group_name)} · ${teamName(m.home_team)} vs ${teamName(m.away_team)}</b><div class="muted">${new Date(m.match_date).toLocaleString('es-ES')}</div><div class="score"><div><label>${teamName(m.home_team)}</label><input type="number" min="0" id="grh_${m.id}" value="${m.real_home??''}"></div><div style="font-weight:900;padding-bottom:17px">-</div><div><label>${teamName(m.away_team)}</label><input type="number" min="0" id="gra_${m.id}" value="${m.real_away??''}"></div></div>${realScorersHtml(m)}<button class="small" onclick="window.saveGlobalReal('${m.id}')">Guardar resultado global</button><button class="small red" onclick="window.resetGlobalReal('${m.id}')">Reset</button></div>`;return `<div class="card"><h2>⚽ Resultados globales</h2>${list.map(renderMatch).join('')}</div>`}
@@ -262,5 +271,5 @@ function adminView(){if(currentUser?.role!=='admin')return `<div class="card"><h
 async function updatePoolSettings(){if(currentUser?.role!=='admin')return alert('Solo el admin puede cambiar estos parámetros');if(!currentPool)return;const enable_joker=confirm('¿Activar Joker?');const enable_scorer=confirm('¿Activar goleador?');const prizes=prompt('Premios:',currentPool.prizes||'')||'';await supabase.from('pools').update({enable_joker,enable_scorer,prizes}).eq('id',currentPool.id);await loadData()}
 async function saveProfile(){const av=prompt('Emoji avatar:',currentUser.avatar||'🙈');if(!av)return;await supabase.from('profiles').update({avatar:av}).eq('id',currentUser.id);await loadData()}
 function render(){document.title='MI PORRA';if(!currentUser){app.innerHTML=loginView();return}let content='';try{content=tab==='porras'?poolsView():tab==='partidos'?matchesView():tab==='normas'?rulesView():tab==='clasificacion'?rankingView():tab==='estadisticas'?statsView():tab==='chat'?chatView():tab==='historial'?historyView():tab==='archivo'?archiveView():tab==='resultados'?globalResultsView():tab==='admin'?adminView():poolsView()}catch(e){console.error(e);content=`<div class="card"><h2>Error</h2><p>${safe(e.message)}</p><button onclick="window.setTab('porras')">Volver</button></div>`}app.innerHTML=`<div class="app">${tabs()}${content}</div>`}
-Object.assign(window,{login,register,logout,setTab,selectPool,createPool,joinPool,leavePool,deletePool,savePrediction,saveGlobalReal,resetGlobalReal,updatePoolSettings,saveProfile,sendMessage})
+Object.assign(window,{login,register,logout,setTab,selectPool,createPool,joinPool,leavePool,deletePool,savePrediction,saveGlobalReal,resetGlobalReal,updatePoolSettings,saveProfile,sendMessage,refreshChat})
 document.title='MI PORRA';restoreSession().then(ok=>{if(!ok)loadData()})
