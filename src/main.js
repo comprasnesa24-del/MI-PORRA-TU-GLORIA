@@ -18,7 +18,7 @@ function generateCode(){return Math.random().toString(36).substring(2,8).toUpper
 function sign(a,b){return a>b?1:a<b?2:'X'}
 function basePoints(ph,pa,rh,ra){if(rh==null||ra==null)return null;ph=Number(ph);pa=Number(pa);rh=Number(rh);ra=Number(ra);if(ph===rh&&pa===ra)return 5;if((ph-pa)===(rh-ra))return 3;if(sign(ph,pa)===sign(rh,ra))return 2;return 0}
 function normalizeScorer(v){return String(v||'').toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g,'').replace(/[^a-z0-9ñ ]/g,'').replace(/\s+/g,' ').trim()}
-function scorerPoints(p,m){if(!currentPool?.enable_scorer||!p?.scorer_prediction||!m?.real_scorers)return 0;const pick=normalizeScorer(p.scorer_prediction);const scorers=String(m.real_scorers).split(',').map(x=>normalizeScorer(x)).filter(Boolean);return scorers.includes(pick)?2:0}
+function scorerPoints(p,m){if(!currentPool?.enable_scorer)return 0;if(Number(m?.real_home)===0&&Number(m?.real_away)===0&&!p?.scorer_prediction)return 2;if(!p?.scorer_prediction||!m?.real_scorers)return 0;const pick=normalizeScorer(p.scorer_prediction);const scorers=String(m.real_scorers).split(',').map(x=>normalizeScorer(x)).filter(Boolean);return scorers.includes(pick)?2:0}
 function mvpPoints(p,m){if(!currentPool?.enable_mvp||!p?.mvp_prediction||!m?.real_mvp)return 0;return normalizeScorer(p.mvp_prediction)===normalizeScorer(m.real_mvp)?2:0}
 function sentOffPoints(p,m){if(!currentPool?.enable_sent_off||!p?.sent_off_prediction||!m?.real_sent_off)return 0;return normalizeScorer(p.sent_off_prediction)===normalizeScorer(m.real_sent_off)?2:0}
 function pointsForPrediction(p,m){const b=basePoints(p.pred_home,p.pred_away,m.real_home,m.real_away);return b==null?null:(p.is_joker?b*2:b)+scorerPoints(p,m)+mvpPoints(p,m)+sentOffPoints(p,m)}
