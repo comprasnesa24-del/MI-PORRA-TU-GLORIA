@@ -109,6 +109,7 @@ button{background:var(--black);color:var(--yellow);border:2px solid var(--yellow
 .bottom-nav button{margin:0;padding:10px 4px;border-radius:16px;background:#1f1f1f;color:white;border:2px solid #333;font-size:12px}
 .bottom-nav button.active{background:var(--yellow);color:var(--black);border-color:var(--red)}
 .bottom-nav span{display:block;font-weight:900}
+.bottom-nav span{position:relative}.chat-dot{position:absolute;top:-6px;right:50%;transform:translateX(34px);width:10px;height:10px;background:#ef4444;border:2px solid #fff;border-radius:999px;box-shadow:0 0 0 2px var(--black)}
 .section-tabs{position:sticky;bottom:76px;background:var(--black);display:grid;grid-template-columns:repeat(4,1fr);gap:6px;margin:18px -8px -8px;padding:8px;border-radius:20px}
 .section-tabs button{margin:0;padding:10px 4px;border-radius:14px;background:#1f1f1f;color:white;border-color:#333;font-size:12px}
 .section-tabs button.active{background:var(--yellow);color:var(--black);border-color:var(--red)}

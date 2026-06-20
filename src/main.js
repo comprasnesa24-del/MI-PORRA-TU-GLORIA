@@ -6,6 +6,7 @@ const supabaseReady = !!(SUPABASE_URL && SUPABASE_ANON_KEY)
 const supabase = supabaseReady ? createClient(SUPABASE_URL, SUPABASE_ANON_KEY) : null
 const app = document.querySelector('#app')
 const SESSION_KEY='mi_porra_session_clean_v1'
+const CHAT_READ_KEY='mi_porra_chat_read_v1'
 
 let currentUser=null,currentPool=null,tab='porras'
 let users=[],pools=[],poolMembers=[],matches=[],predictions=[],messages=[],teamPlayers=[]
@@ -41,6 +42,12 @@ function saveSession(){try{localStorage.setItem(SESSION_KEY,JSON.stringify({user
 function clearSession(){try{localStorage.removeItem(SESSION_KEY)}catch(e){}}
 function teamName(v){return safe(v)}
 function messageText(m){return m?.body??m?.content??m?.message??m?.text??''}
+function chatReadKey(){return currentUser&&currentPool?CHAT_READ_KEY+'_'+currentUser.id+'_'+currentPool.id:null}
+function chatLastRead(){try{const k=chatReadKey();return k?Number(localStorage.getItem(k)||0):0}catch(e){return 0}}
+function latestChatMessageTime(){if(!currentPool)return 0;return messages.filter(m=>String(m.pool_id)===String(currentPool.id)&&String(m.user_id)!==String(currentUser?.id)).reduce((max,m)=>Math.max(max,new Date(m.created_at||0).getTime()||0),0)}
+function hasUnreadChat(){return latestChatMessageTime()>chatLastRead()}
+function markChatRead(){try{const k=chatReadKey();if(k)localStorage.setItem(k,String(Date.now()))}catch(e){}}
+
 
 function normTeam(v){return String(v||'').toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g,'').replace(/[^a-z0-9 ]/g,'').replace(/\s+/g,' ').trim()}
 const MATCH_TEAM_CODES={
@@ -192,13 +199,13 @@ function loginView(){return `<div class="app"><div class="hero"><div><div class=
 async function register(){const nick=document.querySelector('#nick').value.trim(),email=document.querySelector('#email').value.trim(),password=document.querySelector('#pass').value;if(!nick||!password)return alert('Pon nick y contraseña');const exists=await supabase.from('profiles').select('*').eq('nick',nick).maybeSingle();if(exists.data)return alert('Ese nick ya existe');let role='user';if(nick.toLowerCase()===ADMIN_NICK){if(password!==ADMIN_PASSWORD)return alert('Contraseña de admin incorrecta');role='admin'}const ins=await supabase.from('profiles').insert({nick,email,password,role,avatar:role==='admin'?'🛡️':'🙈'}).select().single();if(ins.error)return alert(ins.error.message);currentUser=ins.data;currentPool=null;tab='porras';saveSession();await loadData()}
 async function login(){const nick=document.querySelector('#nick').value.trim(),password=document.querySelector('#pass').value;if(!nick||!password)return alert('Pon nick y contraseña');const res=await supabase.from('profiles').select('*').eq('nick',nick).eq('password',password).maybeSingle();if(!res.data)return alert('Usuario o contraseña incorrectos');currentUser=res.data;currentPool=null;tab='porras';saveSession();await loadData()}
 function logout(){currentUser=null;currentPool=null;tab='porras';clearSession();render()}
-function setTab(t){tab=t;saveSession();render()}
+function setTab(t){tab=t;if(t==='chat')markChatRead();saveSession();render()}
 function changePool(){currentPool=null;tab='porras';saveSession();render()}
 function isClassificationTab(){return ['clasificacion','normas','estadisticas','historial'].includes(tab)}
 function tabs(){
   const topbar=`<div class="topbar"><button class="icon-btn" title="Cerrar sesion" onclick="window.logout()">&#x23FB;</button><div><b>Hola, ${safe(currentUser.nick)}</b>${currentPool?`<br><span>${safe(currentPool.name)}</span>`:''}</div>${currentPool&&currentUser?.role!=='admin'?`<button class="icon-btn" title="Cambiar de porra" onclick="window.changePool()">&#x21C4;</button>`:'<span></span>'}</div>`;
   const adminTabs=`<div class="tabs admin-tabs"><button onclick="window.setTab('porras')">Todas las porras</button><button class="yellow" onclick="window.setTab('resultados')">Resultados globales</button><button class="blue" onclick="window.setTab('archivo')">Partidos completados</button><button class="blue" onclick="window.setTab('historial')">Historial</button></div>`;
-  const userBottom=currentPool&&currentUser?.role!=='admin'?`<nav class="bottom-nav"><button class="${tab==='partidos'?'active':''}" onclick="window.setTab('partidos')"><span>Pendientes</span></button><button class="${tab==='archivo'?'active':''}" onclick="window.setTab('archivo')"><span>Completados</span></button><button class="${isClassificationTab()?'active':''}" onclick="window.setTab('clasificacion')"><span>Clasificacion</span></button><button class="${tab==='chat'?'active':''}" onclick="window.setTab('chat')"><span>Chat</span></button></nav>`:'';
+  const userBottom=currentPool&&currentUser?.role!=='admin'?`<nav class="bottom-nav"><button class="${tab==='partidos'?'active':''}" onclick="window.setTab('partidos')"><span>Pendientes</span></button><button class="${tab==='archivo'?'active':''}" onclick="window.setTab('archivo')"><span>Completados</span></button><button class="${isClassificationTab()?'active':''}" onclick="window.setTab('clasificacion')"><span>Clasificacion</span></button><button class="${tab==='chat'?'active':''}" onclick="window.setTab('chat')"><span>Chat${hasUnreadChat()?'<i class="chat-dot"></i>':''}</span></button></nav>`:'';
   const userCard=`<div class="card profile-card"><h2>${avatar(currentUser)} Hola, ${safe(currentUser.nick)}</h2><p>${currentUser?.role==='admin'?'Modo administrador':'Espa?a campeona del mundo'}</p><button class="small yellow" onclick="window.saveProfile()">Editar avatar</button></div>`;
   const poolLabel=currentPool?`<div class="pool-pill"><b>Porra:</b> ${safe(currentPool.name)} ? Codigo: <b>${safe(currentPool.code)}</b></div>`:'';
   return currentUser?.role==='admin'?`${topbar}${adminTabs}${userCard}${poolLabel}`:`${topbar}${!currentPool?userCard:''}${poolLabel}${userBottom}`;
@@ -244,6 +251,7 @@ function rankingView(){if(!currentPool)return poolsView();const rows=poolUsers()
 function statsView(){if(!currentPool)return poolsView();return `<div class="card classification-card"><h2>Estadisticas</h2><p>Participantes: <b>${poolUsers().filter(u=>u.role!=='admin').length}</b></p><p>Pronosticos: <b>${poolPredictions().length}</b></p>${classificationTabs()}</div>`}
 function chatView(){
   if(!currentPool)return poolsView();
+  markChatRead();
   const ms=messages.filter(m=>String(m.pool_id)===String(currentPool.id));
   return `<div class="card">
     ${messagesLoadError?`<div class="notice"><b>El chat necesita configurarse en Supabase.</b><br>${safe(messagesLoadError)}</div>`:''}
