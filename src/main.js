@@ -23,7 +23,7 @@ function mvpPoints(p,m){if(!currentPool?.enable_mvp||!p?.mvp_prediction||!m?.rea
 function sentOffPoints(p,m){if(!currentPool?.enable_sent_off||!p?.sent_off_prediction||!m?.real_sent_off)return 0;return normalizeScorer(p.sent_off_prediction)===normalizeScorer(m.real_sent_off)?2:0}
 function pointsForPrediction(p,m){const b=basePoints(p.pred_home,p.pred_away,m.real_home,m.real_away);return b==null?null:(p.is_joker?b*2:b)+scorerPoints(p,m)+mvpPoints(p,m)+sentOffPoints(p,m)}
 function isLocked(m){return new Date(m.match_date).getTime()<=Date.now()}
-function isArchivedMatch(m){return Date.now()-new Date(m.match_date).getTime()>=4*60*60*1000}
+function isArchivedMatch(m){return m.real_home!==null&&m.real_away!==null}
 function activeMatches(){return matches.filter(m=>!isArchivedMatch(m))}
 function archivedMatches(){return matches.filter(m=>isArchivedMatch(m))}
 function currentPoolMemberIds(){return currentPool?poolMembers.filter(pm=>pm.pool_id===currentPool.id).map(pm=>pm.user_id):[]}
