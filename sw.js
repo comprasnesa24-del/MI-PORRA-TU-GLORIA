@@ -1,4 +1,4 @@
-const CACHE_NAME='mi-porra-tu-gloria-v6';
+const CACHE_NAME='mi-porra-tu-gloria-v7';
 const FILES_TO_CACHE=['/','/index.html','/style.css','/src/main.js','/assets/hero-porra-gloria.png'];
 
 self.addEventListener('install',e=>{
