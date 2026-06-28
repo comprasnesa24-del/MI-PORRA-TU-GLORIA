@@ -147,3 +147,9 @@ button{padding:9px 12px;font-size:14px;border-radius:12px;border-width:2px}
 .taunts{margin-top:4px;gap:4px}
 .taunt{font-size:10px;padding:4px 7px;border-radius:999px}
 .score-select,.goals select{min-width:48px;padding:7px;border-width:2px;border-radius:10px}
+.podium-summary{margin-top:12px;background:#fff;border:2px dashed var(--black)}
+.podium-summary h3{font-size:16px;margin:0 0 7px}
+.podium-row{display:grid;grid-template-columns:1.1fr .9fr .9fr .9fr;gap:5px;align-items:center;background:#fff8df;border:1px solid #0002;border-radius:10px;padding:6px;margin:4px 0;font-size:11px}
+.podium-row span{display:inline-grid;place-items:center;width:18px;height:18px;margin-right:4px;border-radius:999px;background:var(--yellow);border:1px solid var(--black);font-weight:900}
+.podium-row b{font-size:12px}.podium-row span[style]{width:20px!important;height:20px!important;line-height:20px!important;margin-right:4px!important}
+@media(max-width:700px){.podium-row{grid-template-columns:1fr;gap:3px}}
