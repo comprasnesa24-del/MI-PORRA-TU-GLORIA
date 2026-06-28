@@ -30,6 +30,47 @@ function isArchivedMatch(m){return m.real_home!==null&&m.real_away!==null}
 function activeMatches(){return matches.filter(m=>!isArchivedMatch(m))}
 function resultSortTime(m){return new Date(m.result_updated_at||m.match_date).getTime()}
 function archivedMatches(){return matches.filter(m=>isArchivedMatch(m)).sort((a,b)=>resultSortTime(b)-resultSortTime(a))}
+const KNOCKOUT_LINKS={
+  m74:[{target:'m89',field:'home_team',type:'winner'}],m77:[{target:'m89',field:'away_team',type:'winner'}],
+  m73:[{target:'m90',field:'home_team',type:'winner'}],m75:[{target:'m90',field:'away_team',type:'winner'}],
+  m76:[{target:'m91',field:'home_team',type:'winner'}],m78:[{target:'m91',field:'away_team',type:'winner'}],
+  m79:[{target:'m92',field:'home_team',type:'winner'}],m80:[{target:'m92',field:'away_team',type:'winner'}],
+  m83:[{target:'m93',field:'home_team',type:'winner'}],m84:[{target:'m93',field:'away_team',type:'winner'}],
+  m81:[{target:'m94',field:'home_team',type:'winner'}],m82:[{target:'m94',field:'away_team',type:'winner'}],
+  m86:[{target:'m95',field:'home_team',type:'winner'}],m88:[{target:'m95',field:'away_team',type:'winner'}],
+  m85:[{target:'m96',field:'home_team',type:'winner'}],m87:[{target:'m96',field:'away_team',type:'winner'}],
+  m89:[{target:'m97',field:'home_team',type:'winner'}],m90:[{target:'m97',field:'away_team',type:'winner'}],
+  m93:[{target:'m98',field:'home_team',type:'winner'}],m94:[{target:'m98',field:'away_team',type:'winner'}],
+  m91:[{target:'m99',field:'home_team',type:'winner'}],m92:[{target:'m99',field:'away_team',type:'winner'}],
+  m95:[{target:'m100',field:'home_team',type:'winner'}],m96:[{target:'m100',field:'away_team',type:'winner'}],
+  m97:[{target:'m101',field:'home_team',type:'winner'}],m98:[{target:'m101',field:'away_team',type:'winner'}],
+  m99:[{target:'m102',field:'home_team',type:'winner'}],m100:[{target:'m102',field:'away_team',type:'winner'}],
+  m101:[{target:'m104',field:'home_team',type:'winner'},{target:'m103',field:'home_team',type:'loser'}],
+  m102:[{target:'m104',field:'away_team',type:'winner'},{target:'m103',field:'away_team',type:'loser'}]
+}
+function knockoutResultTeams(m){if(m?.real_home==null||m?.real_away==null)return null;const rh=Number(m.real_home),ra=Number(m.real_away);if(rh===ra)return null;return rh>ra?{winner:m.home_team,loser:m.away_team}:{winner:m.away_team,loser:m.home_team}}
+async function propagateKnockoutNames(startId,realData){
+  const first=matches.find(x=>String(x.id)===String(startId));
+  if(first&&realData)Object.assign(first,realData);
+  const queue=[String(startId)];let changed=0;
+  while(queue.length){
+    const sourceId=queue.shift(),links=KNOCKOUT_LINKS[sourceId]||[];
+    const source=matches.find(x=>String(x.id)===sourceId),teams=knockoutResultTeams(source);
+    if(!teams)continue;
+    for(const link of links){
+      const target=matches.find(x=>String(x.id)===String(link.target));
+      if(!target)continue;
+      const nextName=teams[link.type];
+      if(!nextName||target[link.field]===nextName)continue;
+      const patch={[link.field]:nextName};
+      const res=await supabase.from('matches').update(patch).eq('id',link.target);
+      if(res.error)throw res.error;
+      Object.assign(target,patch);changed++;
+      if(target.real_home!==null&&target.real_away!==null)queue.push(String(target.id));
+    }
+  }
+  return changed;
+}
 function currentPoolMemberIds(){return currentPool?poolMembers.filter(pm=>pm.pool_id===currentPool.id).map(pm=>pm.user_id):[]}
 function poolUsers(){const ids=currentPoolMemberIds();return users.filter(u=>ids.includes(u.id))}
 function poolPredictions(){if(!currentPool)return[];const ids=currentPoolMemberIds();return predictions.filter(p=>p.pool_id===currentPool.id&&ids.includes(p.user_id))}
@@ -326,7 +367,7 @@ async function refreshChat(){await loadData()}
 function historyView(){return `<div class="card classification-card"><h2>Historial</h2>${matches.filter(m=>m.real_home!==null&&!isArchivedMatch(m)).map(m=>`<div class="match"><b>${teamName(m.home_team)} ${m.real_home} - ${m.real_away} ${teamName(m.away_team)}</b><div class="muted">${new Date(m.match_date).toLocaleString('es-ES')}</div></div>`).join('')||'<p class="muted">Sin resultados recientes.</p>'}${currentUser?.role!=='admin'?classificationTabs():''}</div>`}
 function archiveView(){const list=archivedMatches();return `<div class="card"><h2>📦 Partidos completados</h2>${list.map(m=>`<div class="match"><span class="group">${safe(m.group_name)}</span><div class="teams">${teamName(m.home_team)} vs ${teamName(m.away_team)}</div><p>Resultado: <b>${m.real_home===null?'Pendiente':m.real_home+' - '+m.real_away}</b></p>${currentPool?matchPoolPredictions(m.id):''}</div>`).join('')||'<p class="muted">Sin partidos completados.</p>'}</div>`}
 function globalResultsView(){if(currentUser?.role!=='admin')return `<div class="card"><h2>Acceso no permitido</h2></div>`;const list=activeMatches();const renderMatch=m=>`<div class="adminrow"><b>${safe(m.group_name)} · ${teamName(m.home_team)} vs ${teamName(m.away_team)}</b><div class="muted">${new Date(m.match_date).toLocaleString('es-ES')}</div><div class="score"><div><label>${teamName(m.home_team)}</label><input type="number" min="0" id="grh_${m.id}" value="${m.real_home??''}"></div><div style="font-weight:900;padding-bottom:17px">-</div><div><label>${teamName(m.away_team)}</label><input type="number" min="0" id="gra_${m.id}" value="${m.real_away??''}"></div></div>${realScorersHtml(m)}${realMvpHtml(m)}${realSentOffHtml(m)}<button class="small" onclick="window.saveGlobalReal('${m.id}')">Guardar resultado global</button><button class="small red" onclick="window.resetGlobalReal('${m.id}')">Reset</button></div>`;return `<div class="card"><h2>⚽ Resultados globales</h2>${list.map(renderMatch).join('')}</div>`}
-async function saveGlobalReal(mid){const rh=parseInt(document.querySelector('#grh_'+mid).value,10),ra=parseInt(document.querySelector('#gra_'+mid).value,10);if(isNaN(rh)||isNaN(ra)||rh<0||ra<0)return alert('Pon resultado valido');const data={real_home:rh,real_away:ra,real_scorers:selectedRealScorers(mid),real_mvp:selectedRealMvp(mid),real_sent_off:selectedRealSentOff(mid),result_updated_at:new Date().toISOString()};let res=await supabase.from('matches').update(data).eq('id',mid);if(res.error&&/result_updated_at|schema cache|column/i.test(res.error.message||'')){delete data.result_updated_at;res=await supabase.from('matches').update(data).eq('id',mid)}if(res.error)return alert(res.error.message);await loadData();alert('Resultado guardado')}
+async function saveGlobalReal(mid){const rh=parseInt(document.querySelector('#grh_'+mid).value,10),ra=parseInt(document.querySelector('#gra_'+mid).value,10);if(isNaN(rh)||isNaN(ra)||rh<0||ra<0)return alert('Pon resultado valido');if(KNOCKOUT_LINKS[String(mid)]&&rh===ra)return alert('En una eliminatoria no puede quedar empate: necesito saber quien pasa para actualizar el cuadro.');const data={real_home:rh,real_away:ra,real_scorers:selectedRealScorers(mid),real_mvp:selectedRealMvp(mid),real_sent_off:selectedRealSentOff(mid),result_updated_at:new Date().toISOString()};let res=await supabase.from('matches').update(data).eq('id',mid);if(res.error&&/result_updated_at|schema cache|column/i.test(res.error.message||'')){delete data.result_updated_at;res=await supabase.from('matches').update(data).eq('id',mid)}if(res.error)return alert(res.error.message);let propagated=0;try{propagated=await propagateKnockoutNames(mid,data)}catch(e){await loadData();return alert('Resultado guardado, pero no pude actualizar el siguiente cruce: '+(e.message||e))}await loadData();alert(propagated?'Resultado guardado y cuadro actualizado':'Resultado guardado')}
 async function resetGlobalReal(mid){if(!confirm('¿Borrar resultado?'))return;await supabase.from('matches').update({real_home:null,real_away:null,real_scorers:'',real_mvp:'',real_sent_off:null}).eq('id',mid);await loadData()}
 function adminView(){if(currentUser?.role!=='admin')return `<div class="card"><h2>Acceso no permitido</h2></div>`;if(!currentPool)return poolsView();return `${adminPodiumHtml()}<div class="card"><h2>Admin · ${safe(currentPool.name)}</h2><button class="yellow" onclick="window.updatePoolSettings()">⚙️ Joker / Goleador / Premios</button><h3>Participantes</h3>${poolUsers().map(u=>`<p>${avatar(u)} ${safe(u.nick)} ${u.role==='admin'?'(admin)':''}</p>`).join('')}</div>`}
 async function updatePoolSettings(){if(currentUser?.role!=='admin')return alert('Solo el admin puede cambiar estos parámetros');if(!currentPool)return;const enable_joker=confirm('¿Activar Joker?');const enable_scorer=confirm('¿Activar goleador?');const enable_mvp=confirm('¿Activar MVP del partido?');const enable_sent_off=confirm('¿Activar posible expulsión?');const prizes=prompt('Premios:',currentPool.prizes||'')||'';await supabase.from('pools').update({enable_joker,enable_scorer,enable_mvp,enable_sent_off,prizes}).eq('id',currentPool.id);await loadData()}
