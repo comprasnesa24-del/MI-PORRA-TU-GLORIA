@@ -124,3 +124,26 @@ button{background:var(--black);color:var(--yellow);border:2px solid var(--yellow
 .podium-modal{position:fixed;inset:0;z-index:100;background:#0009;display:flex;align-items:center;justify-content:center;padding:18px}.podium-modal-card{background:#fff8df;border:4px solid var(--black);border-radius:26px;box-shadow:0 20px 0 #0006;max-width:420px;width:100%;padding:22px}.podium-modal-card h2{margin-top:0}.podium-modal-card li{font-weight:900;margin:6px 0}
 @media(max-width:700px){.app{padding:76px 12px 104px}.topbar{padding:10px 12px}.card{border-radius:24px;padding:18px}.pool-actions{grid-template-columns:1fr}.bottom-nav button{font-size:11px}.section-tabs{grid-template-columns:repeat(2,1fr);bottom:78px}.ranking{grid-template-columns:34px 1fr 62px;font-size:13px}}
 @media(max-width:700px){.podium-grid{grid-template-columns:1fr}}
+
+/* Compact mode: menos rollo, mas app */
+.app{padding-top:64px;padding-bottom:82px}
+.topbar{grid-template-columns:40px 1fr 40px;padding:7px 10px;gap:8px}
+.topbar b{font-size:14px;line-height:1.05}
+.topbar span{font-size:11px;line-height:1.1}
+.icon-btn{width:36px;height:36px;border-radius:12px;font-size:18px;border-width:2px}
+.card{padding:14px;border-width:2px;border-radius:18px;box-shadow:0 8px 0 #0002;margin-bottom:10px}
+.card h2{font-size:22px;margin:0 0 8px}
+.card p{margin:6px 0 10px;line-height:1.25}
+.pool-pill{padding:8px 11px;margin:6px 0 10px;border-width:2px;border-radius:14px}
+button{padding:9px 12px;font-size:14px;border-radius:12px;border-width:2px}
+.bottom-nav{gap:4px;padding:6px 6px 8px;border-width:2px}
+.bottom-nav button{padding:7px 2px;border-radius:11px;font-size:10px;min-height:38px}
+.section-tabs{bottom:60px;margin:10px -4px -4px;padding:5px;border-radius:14px;border-width:2px}
+.section-tabs button{padding:7px 2px;font-size:10px;border-radius:10px;min-height:36px}
+.match,.adminrow,.rule{padding:9px;margin:8px 0;border-radius:14px;border-width:2px}
+.teams{font-size:16px;margin:4px 0}
+.notice{padding:9px;margin:7px 0;border-radius:12px}
+.ranking{padding:6px;gap:6px;margin:4px 0;border-radius:13px}
+.taunts{margin-top:4px;gap:4px}
+.taunt{font-size:10px;padding:4px 7px;border-radius:999px}
+.score-select,.goals select{min-width:48px;padding:7px;border-width:2px;border-radius:10px}
