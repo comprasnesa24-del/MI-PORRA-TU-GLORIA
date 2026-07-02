@@ -6,14 +6,13 @@ const supabaseReady = !!(SUPABASE_URL && SUPABASE_ANON_KEY)
 const supabase = supabaseReady ? createClient(SUPABASE_URL, SUPABASE_ANON_KEY) : null
 const app = document.querySelector('#app')
 const SESSION_KEY='mi_porra_session_clean_v1'
-const PROFILE_FIELDS='id,nick,email,role,avatar,created_at'
 const CHAT_READ_KEY='mi_porra_chat_read_v1'
 
 let currentUser=null,currentPool=null,tab='porras'
 let users=[],pools=[],poolMembers=[],matches=[],predictions=[],messages=[],teamPlayers=[]
 let messagesLoadError=''
 let podiumReminderDismissed=false
-const ADMIN_NICK='admin'
+const ADMIN_NICK='admin', ADMIN_PASSWORD='968085070'
 
 function safe(v){return String(v??'').replace(/[&<>"']/g,m=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#039;'}[m]))}
 function avatar(u){return `<span style="display:inline-block;width:28px;height:28px;text-align:center;line-height:28px;background:#dcfce7;border-radius:6px;margin-right:8px">${safe(u?.avatar||'⚽')}</span>`}
@@ -227,12 +226,12 @@ async function loadData(doRender=true){
   if(!supabaseReady)return renderNoConfig();
 
   const [u,p,pm,m,pr,msg,tp1,tp2]=await Promise.all([
-    supabase.from('profiles').select(PROFILE_FIELDS),
+    supabase.from('profiles').select('*'),
     supabase.from('pools').select('*').order('created_at',{ascending:false}),
     supabase.from('pool_members').select('*'),
     supabase.from('matches').select('*').order('match_date'),
-    currentPool?supabase.from('predictions').select('*').eq('pool_id',currentPool.id):Promise.resolve({data:[]}),
-    currentPool?supabase.from('messages').select('*').eq('pool_id',currentPool.id).order('created_at',{ascending:true}).limit(200):Promise.resolve({data:[]}),
+    supabase.from('predictions').select('*'),
+    supabase.from('messages').select('*').order('created_at',{ascending:true}).limit(200),
     supabase.from('team_players').select('*').range(0,999),
     supabase.from('team_players').select('*').range(1000,1999)
   ]);
@@ -254,8 +253,9 @@ async function loadData(doRender=true){
 async function restoreSession(){try{const raw=localStorage.getItem(SESSION_KEY);if(!raw)return false;const s=JSON.parse(raw);if(!s.userId)return false;await loadData(false);currentUser=users.find(u=>u.id===s.userId)||null;if(!currentUser){clearSession();return false}currentPool=currentUser.role==='admin'?(pools.find(p=>p.id===s.poolId)||null):null;tab='porras';saveSession();render();return true}catch(e){clearSession();return false}}
 function renderNoConfig(){app.innerHTML='<div class="app"><div class="card"><h1>Falta configurar Supabase</h1></div></div>'}
 function loginView(){return `<div class="app"><div class="hero"><div><div class="kicker">MUNDIAL · APP PRIVADA</div><h1>Mi Porra<br><span>Tu Gloria</span></h1><p>Acierta el marcador, suma puntos y presume en la clasificación.</p></div><div class="ball">⚽</div></div><div class="card"><h2>Entrar</h2><label>Nick</label><input id="nick"><label>Email opcional</label><input id="email"><label>Contraseña</label><input id="pass" type="password"><button onclick="window.login()">Entrar</button><button class="blue" onclick="window.register()">Registrarme</button></div></div>`}
-async function register(){const nick=document.querySelector('#nick').value.trim(),email=document.querySelector('#email').value.trim(),password=document.querySelector('#pass').value;if(!nick||!password)return alert('Pon nick y contraseña');if(nick.toLowerCase()===ADMIN_NICK)return alert('El admin no se puede crear desde el registro público.');const exists=await supabase.from('profiles').select('id').eq('nick',nick).maybeSingle();if(exists.data)return alert('Ese nick ya existe');const ins=await supabase.from('profiles').insert({nick,email,password,role:'user',avatar:'🙈'}).select(PROFILE_FIELDS).single();if(ins.error)return alert(ins.error.message);currentUser=ins.data;currentPool=null;tab='porras';saveSession();await loadData()}
-async function login(){const nick=document.querySelector('#nick').value.trim(),password=document.querySelector('#pass').value;if(!nick||!password)return alert('Pon nick y contraseña');let res=await supabase.rpc('login_profile',{p_nick:nick,p_password:password}).maybeSingle();if(res.error&&/function|schema cache|not find|not found|login_profile/i.test(res.error.message||''))res=await supabase.from('profiles').select(PROFILE_FIELDS).eq('nick',nick).eq('password',password).maybeSingle();if(res.error&&!res.data)return alert(res.error.message);if(!res.data)return alert('Usuario o contraseña incorrectos');currentUser=res.data;currentPool=null;tab='porras';saveSession();await loadData()}function logout(){currentUser=null;currentPool=null;tab='porras';clearSession();render()}
+async function register(){const nick=document.querySelector('#nick').value.trim(),email=document.querySelector('#email').value.trim(),password=document.querySelector('#pass').value;if(!nick||!password)return alert('Pon nick y contraseña');const exists=await supabase.from('profiles').select('*').eq('nick',nick).maybeSingle();if(exists.data)return alert('Ese nick ya existe');let role='user';if(nick.toLowerCase()===ADMIN_NICK){if(password!==ADMIN_PASSWORD)return alert('Contraseña de admin incorrecta');role='admin'}const ins=await supabase.from('profiles').insert({nick,email,password,role,avatar:role==='admin'?'🛡️':'🙈'}).select().single();if(ins.error)return alert(ins.error.message);currentUser=ins.data;currentPool=null;tab='porras';saveSession();await loadData()}
+async function login(){const nick=document.querySelector('#nick').value.trim(),password=document.querySelector('#pass').value;if(!nick||!password)return alert('Pon nick y contraseña');const res=await supabase.from('profiles').select('*').eq('nick',nick).eq('password',password).maybeSingle();if(!res.data)return alert('Usuario o contraseña incorrectos');currentUser=res.data;currentPool=null;tab='porras';saveSession();await loadData()}
+function logout(){currentUser=null;currentPool=null;tab='porras';clearSession();render()}
 function setTab(t){tab=t;if(t==='chat')markChatRead();saveSession();render()}
 function changePool(){currentPool=null;tab='porras';saveSession();render()}
 function isClassificationTab(){return ['clasificacion','normas','estadisticas','historial'].includes(tab)}
