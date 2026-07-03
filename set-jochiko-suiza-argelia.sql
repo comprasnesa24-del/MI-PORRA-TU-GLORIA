@@ -1,6 +1,6 @@
 -- Cambiar pronostico de Jochiko para Suiza - Argelia.
 -- Resultado: Suiza 3 - 1 Argelia
--- Goleador: Embolo
+-- Goleador: EMBOLO
 -- Ejecutar en Supabase > SQL Editor.
 
 with target_user as (
@@ -24,7 +24,7 @@ update public.predictions p
 set
   pred_home = 3,
   pred_away = 1,
-  scorer_prediction = 'Embolo'
+  scorer_prediction = 'EMBOLO'
 from target_pools tp
 where p.pool_id = tp.pool_id
   and p.user_id = tp.user_id
@@ -48,7 +48,7 @@ with target_user as (
   cross join target_match tm
 )
 insert into public.predictions (pool_id, user_id, match_id, pred_home, pred_away, scorer_prediction)
-select tp.pool_id, tp.user_id, tp.match_id, 3, 1, 'Embolo'
+select tp.pool_id, tp.user_id, tp.match_id, 3, 1, 'EMBOLO'
 from target_pools tp
 where not exists (
   select 1
