@@ -1,6 +1,7 @@
 -- Actualizar resultado de la final España - Argentina.
 -- Resultado real: España 0 - 0 Argentina
 -- Campeona tras desempate/penaltis: España
+-- Version compatible si no existe result_updated_at.
 -- Ejecutar en Supabase > SQL Editor.
 
 update public.matches
@@ -10,8 +11,7 @@ set
   away_team = 'Argentina',
   real_home = 0,
   real_away = 0,
-  advance_team = 'España',
-  result_updated_at = now()
+  advance_team = 'España'
 where id = 'm104'
    or (
     lower(trim(group_name)) = lower('Final')
