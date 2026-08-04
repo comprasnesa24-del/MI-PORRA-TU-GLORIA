@@ -153,3 +153,6 @@ button{padding:9px 12px;font-size:14px;border-radius:12px;border-width:2px}
 .podium-row span{display:inline-grid;place-items:center;width:18px;height:18px;margin-right:4px;border-radius:999px;background:var(--yellow);border:1px solid var(--black);font-weight:900}
 .podium-row b{font-size:12px}.podium-row span[style]{width:20px!important;height:20px!important;line-height:20px!important;margin-right:4px!important}
 @media(max-width:700px){.podium-row{grid-template-columns:1fr;gap:3px}}
+.competition-switch{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin:8px 0 12px}
+.competition-switch button{background:#151515;color:#f7d21b;border:2px solid #f7d21b;border-radius:18px;padding:10px;font-weight:900}
+.competition-switch button.active{background:#d71920;color:#fff;border-color:#f7d21b;box-shadow:0 0 0 2px #151515 inset}
