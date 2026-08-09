@@ -1,37 +1,52 @@
-# Liga BBVA automatica
+﻿# Liga BBVA automatica
 
-La app no debe llevar la clave de la API en el navegador. Por eso la sincronizacion se hace con una Supabase Edge Function:
+La app no debe llevar claves privadas en el navegador. Por eso la sincronizacion se hace con una Supabase Edge Function.
 
-- Fuente recomendada: football-data.org
-- Competicion: PD, Primera Division / Liga
-- Temporada: 2026 para Liga 2026/27
-- Tabla actualizada: public.matches
+Fuentes:
 
-Pasos:
+- football-data.org: calendario y resultados basicos. Ya esta funcionando.
+- API-Football: eventos del partido, incluidos goleadores. Hace falta una API key gratis aparte.
 
-1. Ejecuta en Supabase SQL Editor:
+Tablas actualizadas:
+
+- public.matches: partidos, resultados y real_scorers.
+- public.team_players: plantillas para desplegables de goleador.
+- public.sync_logs: historial de sincronizaciones.
+
+Pasos ya preparados en el repositorio:
+
+1. SQL base de competiciones:
    - add-competitions.sql
    - add-liga-auto-sync.sql
 
-2. Crea una API key gratuita en football-data.org.
+2. SQL extra para goleadores automaticos:
+   - add-liga-auto-scorers.sql
 
-3. En Supabase, anade estos secretos a la funcion:
-   - FOOTBALL_DATA_TOKEN = tu token
-   - FOOTBALL_DATA_COMPETITION = PD
-   - FOOTBALL_DATA_SEASON = 2026
-   - SYNC_CRON_SECRET = una contrasena larga inventada por ti
+3. Funcion Supabase:
+   - supabase/functions/sync-football-data/index.ts
 
-4. Despliega la funcion:
-   supabase functions deploy sync-football-data
+Secretos necesarios en Supabase:
 
-5. Prueba la funcion:
-   supabase functions invoke sync-football-data --no-verify-jwt
+- FOOTBALL_DATA_TOKEN: token de football-data.org.
+- FOOTBALL_DATA_COMPETITION: PD.
+- FOOTBALL_DATA_SEASON: 2026.
+- SYNC_CRON_SECRET: secreto privado para el cron.
 
-6. Para que se ejecute sola cada noche, activa pg_cron + pg_net o crea un Scheduled Function en Supabase llamando a sync-football-data.
+Para activar goleadores automaticos hay que anadir tambien:
+
+- API_FOOTBALL_KEY: clave gratis de API-Football.
+- API_FOOTBALL_LEAGUE: 140.
+- API_FOOTBALL_SEASON: 2026.
+- API_FOOTBALL_MAX_EVENT_MATCHES: 12.
+
+Uso:
+
+- El cron normal actualiza calendario, resultados y los goleadores de los ultimos partidos finalizados.
+- Para cargar plantillas una vez, invoca la funcion con este body:
+  { "syncSquads": true }
 
 Notas:
 
-- No borra tus porras ni pronosticos.
-- Los partidos de Liga se guardan con competition = liga.
-- El Mundial queda como competition = mundial.
-- Si Football-Data cambia horario o resultado, el siguiente sync lo actualiza.
+- No borra porras ni pronosticos.
+- Si no existe API_FOOTBALL_KEY, la funcion sigue usando football-data.org como respaldo.
+- Con API-Football gratis hay 100 peticiones/dia, por eso las plantillas deben cargarse solo cuando haga falta y el cron limita goleadores recientes.
