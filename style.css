@@ -156,3 +156,7 @@ button{padding:9px 12px;font-size:14px;border-radius:12px;border-width:2px}
 .competition-switch{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin:8px 0 12px}
 .competition-switch button{background:#151515;color:#f7d21b;border:2px solid #f7d21b;border-radius:18px;padding:10px;font-weight:900}
 .competition-switch button.active{background:#d71920;color:#fff;border-color:#f7d21b;box-shadow:0 0 0 2px #151515 inset}
+.league-table-card{background:#fff8df}
+.league-table-grid{display:grid;grid-template-columns:repeat(2,1fr);gap:7px;margin:10px 0}
+.league-team-select{width:100%;font-size:13px;font-weight:900;padding:8px;border:2px solid var(--black);border-radius:12px;background:white;color:var(--black)}
+@media(max-width:700px){.league-table-grid{grid-template-columns:1fr}.league-team-select{font-size:12px;padding:7px}}
