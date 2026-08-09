@@ -55,7 +55,8 @@ Deno.serve(async (req) => {
 
     if (cronSecret) {
       const auth = req.headers.get('Authorization') || ''
-      if (auth !== `Bearer ${cronSecret}`) {
+      const syncSecret = req.headers.get('X-Sync-Secret') || (auth.startsWith('Bearer ') ? auth.slice(7) : '')
+      if (syncSecret !== cronSecret) {
         return new Response(JSON.stringify({ error: 'No autorizado' }), {
           status: 401,
           headers: { ...corsHeaders, 'Content-Type': 'application/json' },
