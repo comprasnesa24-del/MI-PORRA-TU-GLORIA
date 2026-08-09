@@ -175,6 +175,7 @@ async function syncApiFootballSquads(supabase: ReturnType<typeof createClient>, 
 
 async function syncApiFootball(supabase: ReturnType<typeof createClient>, apiKey: string, league: string, season: string, options: { syncSquads?: boolean; fullScorers?: boolean }) {
   const payload = await fetchJson(`https://v3.football.api-sports.io/fixtures?league=${league}&season=${season}`, { 'x-apisports-key': apiKey })
+  if (payload.errors && Object.keys(payload.errors).length) throw new Error(`API-Football no disponible: ${JSON.stringify(payload.errors)}`)
   const fixtures: ApiFootballFixture[] = payload.response || []
   const maxEventMatches = Math.max(0, Number(Deno.env.get('API_FOOTBALL_MAX_EVENT_MATCHES') || '12'))
   const finished = fixtures
@@ -226,9 +227,22 @@ Deno.serve(async (req) => {
     const apiFootballLeague = Deno.env.get('API_FOOTBALL_LEAGUE') || '140'
     const season = Deno.env.get('FOOTBALL_DATA_SEASON') || Deno.env.get('API_FOOTBALL_SEASON') || '2026'
 
-    const result = apiFootballKey
-      ? await syncApiFootball(supabase, apiFootballKey, apiFootballLeague, season, body)
-      : await syncFootballData(supabase, required('FOOTBALL_DATA_TOKEN'), Deno.env.get('FOOTBALL_DATA_COMPETITION') || 'PD', season)
+    let result
+    if (apiFootballKey) {
+      try {
+        result = await syncApiFootball(supabase, apiFootballKey, apiFootballLeague, season, body)
+        if (!result.count) {
+          const fallbackToken = Deno.env.get('FOOTBALL_DATA_TOKEN')
+          if (fallbackToken) result = await syncFootballData(supabase, fallbackToken, Deno.env.get('FOOTBALL_DATA_COMPETITION') || 'PD', season)
+        }
+      } catch (apiFootballError) {
+        const fallbackToken = Deno.env.get('FOOTBALL_DATA_TOKEN')
+        if (!fallbackToken) throw apiFootballError
+        result = await syncFootballData(supabase, fallbackToken, Deno.env.get('FOOTBALL_DATA_COMPETITION') || 'PD', season)
+      }
+    } else {
+      result = await syncFootballData(supabase, required('FOOTBALL_DATA_TOKEN'), Deno.env.get('FOOTBALL_DATA_COMPETITION') || 'PD', season)
+    }
 
     await supabase.from('sync_logs').insert({
       source: result.provider,
@@ -253,3 +267,5 @@ Deno.serve(async (req) => {
     })
   }
 })
+
+
