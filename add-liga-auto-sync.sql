@@ -29,11 +29,11 @@ create table if not exists public.sync_logs (
   created_at timestamptz not null default now()
 );
 
--- Optional nightly cron if pg_cron + pg_net are enabled in Supabase.
+-- Optional cron every 2 hours if pg_cron + pg_net are enabled in Supabase.
 -- Replace TU_PROJECT_REF and CRON_SECRET with your real values.
 -- select cron.schedule(
---   'sync-liga-bbva-daily',
---   '10 4 * * *',
+--   'sync-liga-bbva-every-2-hours',
+--   '10 */2 * * *',
 --   $$select net.http_post(
 --     url := 'https://TU_PROJECT_REF.functions.supabase.co/sync-football-data',
 --     headers := jsonb_build_object('Authorization','Bearer CRON_SECRET'),

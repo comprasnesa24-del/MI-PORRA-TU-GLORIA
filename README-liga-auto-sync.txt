@@ -1,4 +1,4 @@
-﻿# Liga BBVA automatica
+# Liga BBVA automatica
 
 La app no debe llevar claves privadas en el navegador. Por eso la sincronizacion se hace con una Supabase Edge Function.
 
@@ -41,7 +41,7 @@ Para activar goleadores automaticos hay que anadir tambien:
 
 Uso:
 
-- El cron normal actualiza calendario, resultados y los goleadores de los ultimos partidos finalizados.
+- El cron normal debe ejecutarse cada 2 horas. Actualiza calendario, horarios, resultados y los goleadores de los ultimos partidos finalizados.
 - Para cargar plantillas una vez, invoca la funcion con este body:
   { "syncSquads": true }
 
