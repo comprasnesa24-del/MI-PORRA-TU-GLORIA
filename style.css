@@ -171,3 +171,7 @@ button{padding:9px 12px;font-size:14px;border-radius:12px;border-width:2px}
 .leave-pool-box summary::after{content:'  +';color:var(--red)}
 .leave-pool-box[open] summary::after{content:'  -'}
 .leave-pool-box button{margin-top:8px}
+
+.league-pick-list{display:grid;gap:6px;margin:12px 0}
+.league-pick-list div{display:grid;grid-template-columns:42px 1fr;gap:8px;align-items:center;background:#fff;border:2px solid var(--black);border-radius:12px;padding:8px 10px;font-weight:900}
+.league-pick-list b{color:var(--red)}
