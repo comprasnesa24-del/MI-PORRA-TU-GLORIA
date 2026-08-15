@@ -175,3 +175,15 @@ button{padding:9px 12px;font-size:14px;border-radius:12px;border-width:2px}
 .league-pick-list{display:grid;gap:6px;margin:12px 0}
 .league-pick-list div{display:grid;grid-template-columns:42px 1fr;gap:8px;align-items:center;background:#fff;border:2px solid var(--black);border-radius:12px;padding:8px 10px;font-weight:900}
 .league-pick-list b{color:var(--red)}
+
+.round-standing{background:#fff8df;border:2px solid var(--black);border-radius:14px;padding:9px;margin:9px 0}
+.round-standing h3{margin:0 0 7px;font-size:16px;color:var(--red)}
+.round-row{display:grid;grid-template-columns:28px 1fr 58px 58px;gap:6px;align-items:center;background:#fff;border:1px solid #0002;border-radius:10px;padding:6px;margin:4px 0;font-size:12px}
+.round-row>div:first-child b{display:grid;place-items:center;width:22px;height:22px;border-radius:999px;background:var(--yellow);border:1px solid var(--black)}
+.round-row span{display:block;font-weight:900;text-align:right;color:var(--black)}
+.round-row small{display:block;text-align:right;color:#64748b;font-size:9px;line-height:1}
+.round-row span[style]{width:22px!important;height:22px!important;line-height:22px!important;margin-right:4px!important}
+@media(max-width:700px){.round-row{grid-template-columns:24px 1fr 48px 48px;font-size:11px;padding:5px;gap:4px}.round-standing{padding:7px}}
+.round-awards{display:grid;grid-template-columns:1fr 1fr;gap:6px;margin:6px 0}
+.round-awards span{background:#fff;border:1px solid #0002;border-radius:10px;padding:6px;font-size:11px;font-weight:900}
+@media(max-width:700px){.round-awards{grid-template-columns:1fr}}
