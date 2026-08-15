@@ -193,3 +193,5 @@ button{padding:9px 12px;font-size:14px;border-radius:12px;border-width:2px}
 .money-bad{color:#b91c1c!important}
 .money-round-row{grid-template-columns:28px 1fr 58px 58px 68px}
 @media(max-width:700px){.money-round-row{grid-template-columns:24px 1fr 42px 42px 58px}.money-ledger div{font-size:11px}}
+.money-ledger .bank-row{background:#101010;color:#ffd21f;border-color:#ffd21f}
+.money-ledger .bank-row b:first-child{letter-spacing:.5px}
