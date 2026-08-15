@@ -252,12 +252,16 @@ async function saveRealPodium(){if(currentUser?.role!=='admin'||!currentPool)ret
 async function loadData(doRender=true){
   if(!supabaseReady)return renderNoConfig();
 
-  const [u,p,pm,m,pr,msg,tp1,tp2]=await Promise.all([
+  const [u,p,pm,m,pr1,pr2,pr3,pr4,pr5,msg,tp1,tp2]=await Promise.all([
     supabase.from('profiles').select('*'),
     supabase.from('pools').select('*').order('created_at',{ascending:false}),
     supabase.from('pool_members').select('*'),
     supabase.from('matches').select('*').order('match_date'),
-    supabase.from('predictions').select('*'),
+    supabase.from('predictions').select('*').range(0,999),
+    supabase.from('predictions').select('*').range(1000,1999),
+    supabase.from('predictions').select('*').range(2000,2999),
+    supabase.from('predictions').select('*').range(3000,3999),
+    supabase.from('predictions').select('*').range(4000,4999),
     supabase.from('messages').select('*').order('created_at',{ascending:true}).limit(200),
     supabase.from('team_players').select('*').range(0,999),
     supabase.from('team_players').select('*').range(1000,1999)
@@ -267,7 +271,7 @@ async function loadData(doRender=true){
   pools=p.data||[];
   poolMembers=pm.data||[];
   matches=m.data||[];
-  predictions=pr.data||[];
+  predictions=[...(pr1.data||[]),...(pr2.data||[]),...(pr3.data||[]),...(pr4.data||[]),...(pr5.data||[])];
   messages=msg.data||[];
   messagesLoadError=msg.error?.message||'';
   teamPlayers=[...(tp1.data||[]),...(tp2.data||[])];
