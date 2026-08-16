@@ -1,4 +1,4 @@
-﻿import { createClient } from 'https://esm.sh/@supabase/supabase-js@2'
+import { createClient } from 'https://esm.sh/@supabase/supabase-js@2'
 
 type FootballDataMatch = {
   id: number
@@ -115,11 +115,35 @@ function apiFootballMatchRow(match: ApiFootballFixture, season: string, scorersB
   }
 }
 
+function sleep(ms: number) {
+  return new Promise((resolve) => setTimeout(resolve, ms))
+}
+
+function shouldRetryStatus(status: number) {
+  return status === 408 || status === 429 || status >= 500
+}
+
 async function fetchJson(url: string, headers: Record<string, string>) {
-  const response = await fetch(url, { headers })
-  const text = await response.text()
-  if (!response.ok) throw new Error(`${url} respondio ${response.status}: ${text}`)
-  return JSON.parse(text)
+  const maxAttempts = Math.max(1, Number(Deno.env.get('SYNC_FETCH_ATTEMPTS') || '4'))
+  const baseDelayMs = Math.max(250, Number(Deno.env.get('SYNC_RETRY_DELAY_MS') || '2500'))
+  let lastError: unknown
+
+  for (let attempt = 1; attempt <= maxAttempts; attempt++) {
+    try {
+      const response = await fetch(url, { headers })
+      const text = await response.text()
+      if (response.ok) return JSON.parse(text)
+      const error = new Error(`${url} respondio ${response.status}: ${text}`)
+      if (!shouldRetryStatus(response.status) || attempt === maxAttempts) throw error
+      lastError = error
+    } catch (error) {
+      lastError = error
+      if (attempt === maxAttempts) break
+    }
+    await sleep(baseDelayMs * attempt)
+  }
+
+  throw lastError instanceof Error ? lastError : new Error(String(lastError))
 }
 
 async function syncFootballData(supabase: ReturnType<typeof createClient>, apiToken: string, competition: string, season: string) {
