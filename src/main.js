@@ -11,6 +11,7 @@ const COMPETITIONS={mundial:{id:'mundial',name:'Mundial 2026',short:'Mundial'},l
 
 let currentUser=null,currentPool=null,currentCompetition='mundial',tab='porras'
 let users=[],pools=[],poolMembers=[],matches=[],predictions=[],messages=[],teamPlayers=[]
+let adminUsersCache={loaded:false,users:[],deleted:[],error:''}
 let messagesLoadError=''
 let podiumReminderDismissed=false
 const ADMIN_NICK='admin', ADMIN_PASSWORD='968085070'
@@ -341,7 +342,7 @@ function competitionSwitcherHtml(){return `<div class="competition-switch">${Obj
 function isClassificationTab(){return ['clasificacion','jornadas','mi_pronostico','normas','estadisticas','historial'].includes(tab)}
 function tabs(){
   const topbar=`<div class="topbar"><button class="icon-btn" title="Cerrar sesion" onclick="window.logout()">&#x23FB;</button><div><b>Hola, ${safe(currentUser.nick)}</b>${currentPool?`<br><span>${safe(currentPool.name)}</span>`:''}</div>${currentPool&&currentUser?.role!=='admin'?`<button class="icon-btn" title="Cambiar de porra" onclick="window.changePool()">&#x21C4;</button>`:'<span></span>'}</div>`;
-  const adminTabs=`<div class="tabs admin-tabs"><button onclick="window.setTab('porras')">Todas las porras</button><button class="yellow" onclick="window.setTab('resultados')">Resultados globales</button><button class="blue" onclick="window.setTab('archivo')">Partidos completados</button><button class="blue" onclick="window.setTab('historial')">Historial</button></div>`;
+  const adminTabs=`<div class="tabs admin-tabs"><button onclick="window.setTab('porras')">Todas las porras</button><button class="yellow" onclick="window.setTab('usuarios')">Usuarios</button><button class="yellow" onclick="window.setTab('resultados')">Resultados globales</button><button class="blue" onclick="window.setTab('archivo')">Partidos completados</button><button class="blue" onclick="window.setTab('historial')">Historial</button></div>`;
   const userBottom=currentPool&&currentUser?.role!=='admin'?`<nav class="bottom-nav"><button class="${tab==='partidos'?'active':''}" onclick="window.setTab('partidos')"><span>Pendientes</span></button><button class="${tab==='archivo'?'active':''}" onclick="window.setTab('archivo')"><span>Completados</span></button><button class="${isClassificationTab()?'active':''}" onclick="window.setTab('clasificacion')"><span>Clasificacion</span></button><button class="${tab==='chat'?'active':''}" onclick="window.setTab('chat')"><span>Chat${hasUnreadChat()?'<i class="chat-dot"></i>':''}</span></button></nav>`:'';
   const userCard=`<div class="card profile-card"><h2>${avatar(currentUser)} Hola, ${safe(currentUser.nick)}</h2><p>${currentUser?.role==='admin'?'Modo administrador':'Listo para repartir disgustos'}</p>${currentUser?.role!=='admin'?`<div class="notice compact-card"><b>Autocopiar pronosticos:</b> ${autoCopyEnabled()?'Activado':'Desactivado'}<br><span class="muted">Copia el marcador a tus otras porras de la misma competicion. El Joker no se copia.</span></div><button class="small yellow" onclick="window.toggleAutoCopyPredictions()">${autoCopyEnabled()?'Desactivar autocopia':'Activar autocopia'}</button>`:''}<button class="small yellow" onclick="window.saveProfile()">Editar avatar</button><button class="small blue" onclick="window.changePassword()">Cambiar contrasena</button></div>`;
   const poolLabel=currentPool?`<div class="pool-pill"><b>Porra:</b> ${safe(currentPool.name)} - Codigo: <b>${safe(currentPool.code)}</b></div>`:'';
@@ -479,6 +480,68 @@ async function refreshChat(){await loadData()}
 
 function historyView(){return `<div class="card classification-card"><h2>Historial</h2>${matches.filter(m=>m.real_home!==null&&!isArchivedMatch(m)).map(m=>`<div class="match"><b>${teamName(m.home_team)} ${m.real_home} - ${m.real_away} ${teamName(m.away_team)}</b><div class="muted">${new Date(m.match_date).toLocaleString('es-ES')}</div></div>`).join('')||'<p class="muted">Sin resultados recientes.</p>'}${currentUser?.role!=='admin'?classificationTabs():''}</div>`}
 function archiveView(){if(currentCompetition==='mix')return `<div class="card"><h2>Completados MIX</h2>${mixSummaryHtml()}<p class="muted">Aqui no hay partidos completados; los puntos entran cuando el admin pone campeones reales.</p></div>`;const list=archivedMatches();return `<div class="card"><h2>Partidos completados</h2>${list.map(m=>`<div class="match"><span class="group">${safe(m.group_name)}</span><div class="teams">${teamName(m.home_team)} vs ${teamName(m.away_team)}</div><p>Resultado: <b>${m.real_home===null?'Pendiente':m.real_home+' - '+m.real_away}</b></p>${currentPool?matchPoolPredictions(m.id):''}</div>`).join('')||'<p class="muted">Sin partidos completados.</p>'}</div>`}
+async function ensureAdminAuthSession(){
+  if(currentUser?.role!=='admin')return null;
+  const email=cleanLoginValue(currentUser.email);
+  if(!email||!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(email)){
+    alert('El admin necesita un email valido guardado.');
+    return null;
+  }
+  const existing=await supabase.auth.getSession();
+  const session=existing.data?.session;
+  if(session?.access_token&&String(session.user?.email||'').toLowerCase()===email.toLowerCase())return session;
+  const pass=prompt('Contraseña del admin para activar Usuarios:');
+  if(!pass)return null;
+  let sign=await supabase.auth.signInWithPassword({email,password:pass});
+  if(sign.data?.session)return sign.data.session;
+  const up=await supabase.auth.signUp({email,password:pass,options:{emailRedirectTo:location.origin}});
+  if(up.error&&!/already|registered|exists|confirm/i.test(up.error.message||'')){
+    alert(up.error.message);
+    return null;
+  }
+  if(up.data?.session)return up.data.session;
+  alert('He preparado el acceso seguro. Revisa el correo de '+email+' y confirma el enlace. Luego vuelve a entrar como admin y pulsa Usuarios otra vez.');
+  return null;
+}
+async function adminUsersRequest(action,payload={}){
+  const session=await ensureAdminAuthSession();
+  if(!session)return null;
+  const res=await fetch(`${SUPABASE_URL}/functions/v1/admin-users`,{
+    method:'POST',
+    headers:{'Content-Type':'application/json','Authorization':'Bearer '+session.access_token,'apikey':SUPABASE_ANON_KEY},
+    body:JSON.stringify({action,...payload})
+  });
+  const data=await res.json().catch(()=>({error:'Respuesta no valida'}));
+  if(!res.ok||data.error)throw new Error(data.error||'Error de admin');
+  return data;
+}
+async function loadAdminUsers(){
+  try{
+    const data=await adminUsersRequest('list');
+    if(!data)return;
+    adminUsersCache={loaded:true,users:data.users||[],deleted:data.deleted||[],error:''};
+    render();
+  }catch(e){adminUsersCache={...adminUsersCache,error:e.message||String(e)};render()}
+}
+async function adminResetUserPassword(userId){
+  const target=(adminUsersCache.users||[]).find(u=>String(u.id)===String(userId))||users.find(u=>String(u.id)===String(userId));
+  if(!target)return alert('Usuario no encontrado');
+  if(!confirm('Poner contraseña 123456 a '+target.nick+'?'))return;
+  try{await adminUsersRequest('reset_password',{userId,newPassword:'123456'});await loadAdminUsers();alert('Contraseña de '+target.nick+' cambiada a 123456')}catch(e){alert(e.message||String(e))}
+}
+async function adminRestoreUser(userId){
+  const target=(adminUsersCache.deleted||[]).find(u=>String(u.id)===String(userId));
+  if(!target)return alert('Usuario eliminado no encontrado');
+  if(!confirm('Recuperar '+target.nick+' con contraseña 123456?'))return;
+  try{await adminUsersRequest('restore_user',{userId,newPassword:'123456'});await loadData(false);await loadAdminUsers();alert('Usuario '+target.nick+' recuperado con contraseña 123456')}catch(e){alert(e.message||String(e))}
+}
+function adminUsersView(){
+  if(currentUser?.role!=='admin')return `<div class="card"><h2>Acceso no permitido</h2></div>`;
+  const loaded=adminUsersCache.loaded;
+  const userRows=adminUsersCache.users||[];
+  const deletedRows=adminUsersCache.deleted||[];
+  return `<div class="card classification-card"><h2>Usuarios</h2><p class="muted">Desde aqui puedes poner la contraseña <b>123456</b> a usuarios registrados y recuperar usuarios eliminados desde ahora.</p><button class="yellow" onclick="window.loadAdminUsers()">${loaded?'Actualizar usuarios':'Cargar usuarios'}</button>${adminUsersCache.error?`<div class="notice"><b>Error:</b> ${safe(adminUsersCache.error)}</div>`:''}${loaded?`<h3>Registrados</h3>${userRows.map(u=>`<div class="prediction-row"><div>${avatar(u)}<b>${safe(u.nick)}</b><br><span class="muted">${safe(u.email||'Sin email')}</span></div><div>${safe(u.role||'user')}</div><div>${u.role==='admin'?'<span class="muted">Admin</span>':`<button class="small yellow" onclick="window.adminResetUserPassword('${u.id}')">Poner 123456</button>`}</div></div>`).join('')||'<p class="muted">No hay usuarios.</p>'}<h3>Eliminados recuperables</h3>${deletedRows.map(u=>`<div class="prediction-row"><div>${avatar(u)}<b>${safe(u.nick)}</b><br><span class="muted">${safe(u.email||'Sin email')}</span></div><div>${u.deleted_at?new Date(u.deleted_at).toLocaleString('es-ES'):''}</div><div><button class="small yellow" onclick="window.adminRestoreUser('${u.id}')">Recuperar</button></div></div>`).join('')||'<p class="muted">No hay usuarios eliminados guardados.</p>'}`:''}</div>`;
+}
 function globalResultsView(){if(currentUser?.role!=='admin')return `<div class="card"><h2>Acceso no permitido</h2></div>`;const list=activeMatches();const renderMatch=m=>`<div class="adminrow"><b>${safe(m.group_name)} · ${teamName(m.home_team)} vs ${teamName(m.away_team)}</b><div class="muted">${new Date(m.match_date).toLocaleString('es-ES')}</div><div class="score"><div><label>${teamName(m.home_team)}</label><input type="number" min="0" id="grh_${m.id}" value="${m.real_home??''}"></div><div style="font-weight:900;padding-bottom:17px">-</div><div><label>${teamName(m.away_team)}</label><input type="number" min="0" id="gra_${m.id}" value="${m.real_away??''}"></div></div>${advanceSelectHtml(m)}${realScorersHtml(m)}${realMvpHtml(m)}${realSentOffHtml(m)}<button class="small" onclick="window.saveGlobalReal('${m.id}')">Guardar resultado global</button><button class="small red" onclick="window.resetGlobalReal('${m.id}')">Reset</button></div>`;return `<div class="card"><h2>⚽ Resultados globales</h2>${list.map(renderMatch).join('')}</div>`}
 async function saveGlobalReal(mid){const rh=parseInt(document.querySelector('#grh_'+mid).value,10),ra=parseInt(document.querySelector('#gra_'+mid).value,10);if(isNaN(rh)||isNaN(ra)||rh<0||ra<0)return alert('Pon resultado valido');const advance=document.querySelector('#adv_'+mid)?.value||null;if(KNOCKOUT_LINKS[String(mid)]&&rh===ra&&!advance)return alert('Hay empate: elige quien pasa la eliminatoria.');const data={real_home:rh,real_away:ra,real_scorers:selectedRealScorers(mid),real_mvp:selectedRealMvp(mid),real_sent_off:selectedRealSentOff(mid),advance_team:advance,result_updated_at:new Date().toISOString()};let res=await supabase.from('matches').update(data).eq('id',mid);if(res.error&&/result_updated_at|advance_team|schema cache|column/i.test(res.error.message||'')){const fallback={...data};delete fallback.result_updated_at;delete fallback.advance_team;res=await supabase.from('matches').update(fallback).eq('id',mid)}if(res.error)return alert(res.error.message);let propagated=0;try{propagated=await propagateKnockoutNames(mid,data)}catch(e){await loadData();return alert('Resultado guardado, pero no pude actualizar el siguiente cruce: '+(e.message||e))}await loadData();alert(propagated?'Resultado guardado y cuadro actualizado':'Resultado guardado')}async function resetGlobalReal(mid){if(!confirm('¿Borrar resultado?'))return;let res=await supabase.from('matches').update({real_home:null,real_away:null,real_scorers:'',real_mvp:'',real_sent_off:null,advance_team:null}).eq('id',mid);if(res.error&&/advance_team|schema cache|column/i.test(res.error.message||''))res=await supabase.from('matches').update({real_home:null,real_away:null,real_scorers:'',real_mvp:'',real_sent_off:null}).eq('id',mid);if(res.error)return alert(res.error.message);await loadData()}function adminView(){if(currentUser?.role!=='admin')return `<div class="card"><h2>Acceso no permitido</h2></div>`;if(!currentPool)return poolsView();return `${adminPodiumHtml()}${adminMixHtml()}${adminLeagueTableVisibilityHtml()}<div class="card"><h2>Admin ? ${safe(currentPool.name)}</h2><button class="yellow" onclick="window.updatePoolSettings()">Joker / Goleador / Premios</button><h3>Participantes</h3>${poolUsers().map(u=>`<p>${avatar(u)} ${safe(u.nick)} ${u.role==='admin'?'(admin)':''}</p>`).join('')}</div>`}
 async function updatePoolSettings(){if(currentUser?.role!=='admin')return alert('Solo el admin puede cambiar estos parametros');if(!currentPool)return;const isLiga=competitionOf(currentPool)==='liga',isMix=competitionOf(currentPool)==='mix';const enable_joker=isLiga?true:(isMix?false:confirm('Activar Joker?'));const enable_scorer=isLiga||isMix?false:confirm('Activar goleador?');const enable_mvp=isLiga||isMix?false:confirm('Activar MVP del partido?');const enable_sent_off=isLiga||isMix?false:confirm('Activar posible expulsion?');const prizes=prompt('Premios:',currentPool.prizes||'')||'';await supabase.from('pools').update({enable_joker,enable_scorer,enable_mvp,enable_sent_off,prizes}).eq('id',currentPool.id);await loadData()}
@@ -487,6 +550,6 @@ async function toggleLeagueTableVisibility(){if(currentUser?.role!=='admin'||!cu
 async function saveProfile(){const av=prompt('Emoji avatar:',currentUser.avatar||':)');if(!av)return;await supabase.from('profiles').update({avatar:av}).eq('id',currentUser.id);await loadData()}
 async function toggleAutoCopyPredictions(){if(!currentUser||currentUser.role==='admin')return;const next=!autoCopyEnabled();setLocalAutoCopy(next);if(Object.prototype.hasOwnProperty.call(currentUser,'auto_copy_predictions')){const res=await supabase.from('profiles').update({auto_copy_predictions:next}).eq('id',currentUser.id);if(res.error&&!/auto_copy_predictions|schema cache|column/i.test(res.error.message||''))return alert(res.error.message);currentUser={...currentUser,auto_copy_predictions:next}}await loadData();alert(next?'Autocopia activada':'Autocopia desactivada')}
 async function changePassword(){if(!currentUser)return alert('Inicia sesión');const current=prompt('Contraseña actual:');if(!current)return;const check=await supabase.from('profiles').select('id').eq('id',currentUser.id).eq('password',current).maybeSingle();if(!check.data)return alert('La contraseña actual no es correcta');const next=prompt('Nueva contraseña:');if(!next||next.length<4)return alert('La nueva contraseña debe tener al menos 4 caracteres');const repeat=prompt('Repite la nueva contraseña:');if(next!==repeat)return alert('Las contraseñas no coinciden');const res=await supabase.from('profiles').update({password:next}).eq('id',currentUser.id);if(res.error)return alert(res.error.message);alert('Contraseña cambiada. Vuelve a entrar con la nueva.');logout()}
-function render(){document.title='MI PORRA';if(!currentUser){app.innerHTML=loginView();return}let content='';try{content=tab==='porras'?poolsView():tab==='partidos'?matchesView():tab==='normas'?rulesView():tab==='clasificacion'?rankingView():tab==='mi_pronostico'?myLeaguePredictionView():tab==='jornadas'?jornadasView():tab==='estadisticas'?statsView():tab==='chat'?chatView():tab==='historial'?historyView():tab==='archivo'?archiveView():tab==='resultados'?globalResultsView():tab==='admin'?adminView():poolsView()}catch(e){console.error(e);content=`<div class="card"><h2>Error</h2><p>${safe(e.message)}</p><button onclick="window.setTab('porras')">Volver</button></div>`}app.innerHTML=`<div class="app has-bottom-nav">${tabs()}<main class="screen">${content}</main>${podiumReminderHtml()}</div>`}
-Object.assign(window,{login,register,logout,setTab,changePool,setCompetition,selectPool,createPool,joinPool,leavePool,deletePool,savePrediction,saveGlobalReal,resetGlobalReal,updatePoolSettings,editPoolPrizes,saveProfile,toggleAutoCopyPredictions,changePassword,sendMessage,refreshChat,savePodiumPrediction,saveRealPodium,saveLeagueTablePrediction,refreshLeagueTableSelects,toggleLeagueTableVisibility,editRoundMoneyRules,showPodiumNow,saveMixPrediction,saveMixResults})
+function render(){document.title='MI PORRA';if(!currentUser){app.innerHTML=loginView();return}let content='';try{content=tab==='porras'?poolsView():tab==='partidos'?matchesView():tab==='normas'?rulesView():tab==='clasificacion'?rankingView():tab==='mi_pronostico'?myLeaguePredictionView():tab==='jornadas'?jornadasView():tab==='estadisticas'?statsView():tab==='chat'?chatView():tab==='historial'?historyView():tab==='archivo'?archiveView():tab==='usuarios'?adminUsersView():tab==='resultados'?globalResultsView():tab==='admin'?adminView():poolsView()}catch(e){console.error(e);content=`<div class="card"><h2>Error</h2><p>${safe(e.message)}</p><button onclick="window.setTab('porras')">Volver</button></div>`}app.innerHTML=`<div class="app has-bottom-nav">${tabs()}<main class="screen">${content}</main>${podiumReminderHtml()}</div>`}
+Object.assign(window,{login,register,logout,setTab,changePool,setCompetition,selectPool,createPool,joinPool,leavePool,deletePool,savePrediction,saveGlobalReal,resetGlobalReal,updatePoolSettings,editPoolPrizes,saveProfile,toggleAutoCopyPredictions,changePassword,loadAdminUsers,adminResetUserPassword,adminRestoreUser,sendMessage,refreshChat,savePodiumPrediction,saveRealPodium,saveLeagueTablePrediction,refreshLeagueTableSelects,toggleLeagueTableVisibility,editRoundMoneyRules,showPodiumNow,saveMixPrediction,saveMixResults})
 document.title='MI PORRA';restoreSession().then(ok=>{if(!ok)loadData()})
