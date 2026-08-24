@@ -1,0 +1,10 @@
+# Android / Google Play
+android-play/.gradle/
+android-play/build/
+android-play/app/build/
+android-play/*.apk
+android-play/*.aab
+android-play/*.jks
+android-play/*.keystore
+android-play/*password*
+android-play/*.idsig

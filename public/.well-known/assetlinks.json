@@ -1,0 +1,12 @@
+{
+  "relation": [
+    "delegate_permission/common.handle_all_urls"
+  ],
+  "target": {
+    "namespace": "android_app",
+    "package_name": "com.miporratugloria.app",
+    "sha256_cert_fingerprints": [
+      "B2:29:70:29:6D:09:56:E0:B7:49:20:0F:52:EC:6A:50:DB:18:DC:1E:D2:1D:AB:5C:F9:DB:98:55:6C:AA:80:41"
+    ]
+  }
+}
