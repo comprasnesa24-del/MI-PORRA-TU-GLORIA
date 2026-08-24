@@ -8,3 +8,7 @@ android-play/*.jks
 android-play/*.keystore
 android-play/*password*
 android-play/*.idsig
+
+# Web build / dependencies
+node_modules/
+dist/
