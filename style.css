@@ -187,6 +187,13 @@ button{padding:9px 12px;font-size:14px;border-radius:12px;border-width:2px}
 .round-awards{display:grid;grid-template-columns:1fr 1fr;gap:6px;margin:6px 0}
 .round-awards span{background:#fff;border:1px solid #0002;border-radius:10px;padding:6px;font-size:11px;font-weight:900}
 @media(max-width:700px){.round-awards{grid-template-columns:1fr}}
+.round-tab-grid{display:grid;grid-template-columns:repeat(6,1fr);gap:5px;margin:9px 0}
+.round-tab-grid button{margin:0;padding:7px 2px;min-height:32px;border-radius:10px;background:#101010;color:#ffd21f;border:2px solid #333;font-size:11px}
+.round-tab-grid button.active{background:var(--yellow);color:var(--black);border-color:var(--red)}
+.round-tab-grid button.pending{opacity:.42}
+.general-standing{background:#fff;border-style:solid}
+.general-round-row{grid-template-columns:28px 1fr 68px}
+@media(max-width:700px){.round-tab-grid{grid-template-columns:repeat(5,1fr)}.general-round-row{grid-template-columns:24px 1fr 54px}}
 
 .money-ledger div{display:grid;grid-template-columns:1fr auto;gap:8px;align-items:center;background:#fff;border:1px solid #0002;border-radius:10px;padding:6px;margin:4px 0;font-size:12px}
 .money-good{color:#166534!important}
