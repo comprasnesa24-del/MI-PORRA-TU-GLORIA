@@ -222,3 +222,26 @@ button{padding:9px 12px;font-size:14px;border-radius:12px;border-width:2px}
 .history-row>div:nth-child(3) b{font-size:18px;color:var(--red)}
 .chat-notice button[disabled],button[disabled]{opacity:.45;cursor:not-allowed}
 @media(max-width:700px){.ranking-list{gap:4px}.compact-ranking{grid-template-columns:24px 1fr 48px;padding:5px}.ranking-main b{font-size:13px}.ranking-points b{font-size:19px}.history-row{grid-template-columns:1fr 54px 38px;font-size:11px;gap:4px}.history-row span{font-size:9px}}
+.login-screen{padding-top:12px;padding-bottom:18px}
+.login-screen .hero{min-height:150px;margin-bottom:10px;padding:18px;border-radius:20px}
+.login-screen .hero h1{font-size:34px;margin:4px 0}
+.login-screen .hero p{margin:4px 0;font-size:14px}
+.login-screen .ball{font-size:42px}
+.login-card{padding:12px}
+.login-card label{margin:8px 0 4px;font-size:13px}
+.login-card input{padding:10px;font-size:15px;border-radius:12px}
+.login-actions{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-top:8px}
+.login-actions button{width:100%;margin:0}
+.login-help{font-size:11px}
+.compact-pool-home{padding:10px}
+.pool-home-title{display:grid;grid-template-columns:1fr auto;gap:8px;align-items:center}
+.pool-home-title h2{margin:0;font-size:20px}
+.compact-pool-actions{gap:6px;margin:6px 0}
+.compact-pool-actions button{padding:8px 6px}
+.compact-pool-choice{padding:8px;margin:6px 0}
+.pool-choice-main{display:grid;grid-template-columns:1fr auto;gap:8px;align-items:center}
+.pool-choice-main h3{margin:0;font-size:17px;line-height:1.1}
+.pool-choice-main p{font-size:11px;margin:3px 0 0;color:#64748b}
+.pool-choice-main button{margin:0;padding:8px 12px}
+.pool-prize{font-size:11px;margin:5px 0 0;line-height:1.2}
+@media(max-width:700px){.competition-switch{grid-template-columns:repeat(3,1fr);gap:5px;margin:6px 0}.competition-switch button{font-size:11px;padding:8px 2px;border-radius:12px}.compact-pool-actions{grid-template-columns:1fr 1fr}.leave-pool-box{margin-top:6px;padding-top:5px}.leave-pool-box summary{font-size:10px}}
