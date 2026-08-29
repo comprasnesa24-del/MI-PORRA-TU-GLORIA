@@ -245,3 +245,7 @@ button{padding:9px 12px;font-size:14px;border-radius:12px;border-width:2px}
 .pool-choice-main button{margin:0;padding:8px 12px}
 .pool-prize{font-size:11px;margin:5px 0 0;line-height:1.2}
 @media(max-width:700px){.competition-switch{grid-template-columns:repeat(3,1fr);gap:5px;margin:6px 0}.competition-switch button{font-size:11px;padding:8px 2px;border-radius:12px}.compact-pool-actions{grid-template-columns:1fr 1fr}.leave-pool-box{margin-top:6px;padding-top:5px}.leave-pool-box summary{font-size:10px}}
+.autocopy-inline{display:grid;grid-template-columns:1fr auto;gap:8px;align-items:center;padding:7px 8px;margin:6px 0 8px}
+.autocopy-inline span{font-size:11px;line-height:1.15}
+.autocopy-inline button{margin:0;padding:7px 10px}
+@media(max-width:700px){.autocopy-inline{grid-template-columns:1fr auto}.autocopy-inline b{font-size:12px}.autocopy-inline button{font-size:11px;padding:6px 8px}}
