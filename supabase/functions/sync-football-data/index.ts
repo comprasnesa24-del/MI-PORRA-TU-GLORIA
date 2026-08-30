@@ -83,9 +83,11 @@ function footballDataMatchRow(match: FootballDataMatch, season: string) {
     home_team: home,
     away_team: away,
     match_date: match.utcDate,
-    real_home: finished ? homeScore : null,
-    real_away: finished ? awayScore : null,
-    result_updated_at: finished ? new Date().toISOString() : null,
+    ...(finished ? {
+      real_home: homeScore,
+      real_away: awayScore,
+      result_updated_at: new Date().toISOString(),
+    } : {}),
   }
 }
 
@@ -108,10 +110,12 @@ function apiFootballMatchRow(match: ApiFootballFixture, season: string, scorersB
     home_team: home,
     away_team: away,
     match_date: match.fixture?.date,
-    real_home: finished ? homeScore : null,
-    real_away: finished ? awayScore : null,
-    real_scorers: finished ? (scorersByFixture.get(fixtureId) || '') : null,
-    result_updated_at: finished ? new Date().toISOString() : null,
+    ...(finished ? {
+      real_home: homeScore,
+      real_away: awayScore,
+      real_scorers: scorersByFixture.get(fixtureId) || '',
+      result_updated_at: new Date().toISOString(),
+    } : {}),
   }
 }
 
