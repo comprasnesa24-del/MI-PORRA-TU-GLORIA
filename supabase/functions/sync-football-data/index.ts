@@ -26,6 +26,7 @@ type ApiFootballEvent = {
 
 type ApiFootballTeam = { team?: { id?: number; name?: string; code?: string } }
 type ApiFootballSquadPlayer = { id?: number; name?: string; position?: string }
+type SyncCompetition = { competition: string; league: string; season: string; label: string }
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
@@ -57,6 +58,52 @@ function uniqueNames(names: string[]) {
   })
 }
 
+function competitionLabel(competition: string) {
+  const labels: Record<string, string> = {
+    liga: 'Liga BBVA',
+    primera_rfef_g1: 'Primera Federacion Grupo 1',
+    primera_rfef_g2: 'Primera Federacion Grupo 2',
+  }
+  return labels[competition] || competition
+}
+
+function parseApiFootballLeagues(defaultSeason: string): SyncCompetition[] {
+  const raw = Deno.env.get('API_FOOTBALL_LEAGUES')
+  const fallback = [{
+    competition: 'liga',
+    league: Deno.env.get('API_FOOTBALL_LEAGUE') || '140',
+    season: Deno.env.get('API_FOOTBALL_SEASON') || defaultSeason,
+    label: 'Liga BBVA',
+  }]
+
+  if (!raw) return fallback
+
+  try {
+    const parsed = JSON.parse(raw)
+    if (Array.isArray(parsed)) {
+      const configs = parsed.map((item) => ({
+        competition: cleanName(item?.competition),
+        league: cleanName(item?.league),
+        season: cleanName(item?.season) || defaultSeason,
+        label: cleanName(item?.label) || competitionLabel(cleanName(item?.competition)),
+      })).filter((item) => item.competition && item.league)
+      if (configs.length) return configs
+    }
+  } catch (_) {}
+
+  const configs = raw.split(',').map((part) => {
+    const [competition, league, season, ...labelParts] = part.split(':').map(cleanName)
+    return {
+      competition,
+      league,
+      season: season || defaultSeason,
+      label: labelParts.join(':') || competitionLabel(competition),
+    }
+  }).filter((item) => item.competition && item.league)
+
+  return configs.length ? configs : fallback
+}
+
 function playerPosition(position?: string) {
   const p = String(position || '').toLowerCase()
   if (p.includes('goalkeeper')) return 'PO'
@@ -66,7 +113,7 @@ function playerPosition(position?: string) {
   return position || ''
 }
 
-function footballDataMatchRow(match: FootballDataMatch, season: string) {
+function footballDataMatchRow(match: FootballDataMatch, season: string, competitionId = 'liga', label = 'Liga BBVA') {
   const home = match.homeTeam?.name || 'Equipo local pendiente'
   const away = match.awayTeam?.name || 'Equipo visitante pendiente'
   const finished = match.status === 'FINISHED'
@@ -74,12 +121,12 @@ function footballDataMatchRow(match: FootballDataMatch, season: string) {
   const awayScore = match.score?.fullTime?.away ?? null
 
   return {
-    id: `liga_${season}_${match.id}`,
-    competition: 'liga',
+    id: `${competitionId}_${season}_${match.id}`,
+    competition: competitionId,
     external_source: 'football-data.org',
     external_id: String(match.id),
     external_status: match.status,
-    group_name: match.matchday ? `Jornada ${match.matchday}` : 'Liga BBVA',
+    group_name: match.matchday ? `Jornada ${match.matchday}` : label,
     home_team: home,
     away_team: away,
     match_date: match.utcDate,
@@ -91,7 +138,7 @@ function footballDataMatchRow(match: FootballDataMatch, season: string) {
   }
 }
 
-function apiFootballMatchRow(match: ApiFootballFixture, season: string, scorersByFixture: Map<string, string>) {
+function apiFootballMatchRow(match: ApiFootballFixture, season: string, scorersByFixture: Map<string, string>, competitionId = 'liga', label = 'Liga BBVA') {
   const fixtureId = String(match.fixture?.id || '')
   const status = match.fixture?.status?.short || ''
   const finished = isFinishedStatus(status)
@@ -101,12 +148,12 @@ function apiFootballMatchRow(match: ApiFootballFixture, season: string, scorersB
   const away = cleanName(match.teams?.away?.name) || 'Equipo visitante pendiente'
 
   return {
-    id: `liga_${season}_${fixtureId}`,
-    competition: 'liga',
+    id: `${competitionId}_${season}_${fixtureId}`,
+    competition: competitionId,
     external_source: 'api-football',
     external_id: fixtureId,
     external_status: status,
-    group_name: match.league?.round || 'Liga BBVA',
+    group_name: match.league?.round || label,
     home_team: home,
     away_team: away,
     match_date: match.fixture?.date,
@@ -150,17 +197,17 @@ async function fetchJson(url: string, headers: Record<string, string>) {
   throw lastError instanceof Error ? lastError : new Error(String(lastError))
 }
 
-async function syncFootballData(supabase: ReturnType<typeof createClient>, apiToken: string, competition: string, season: string) {
+async function syncFootballData(supabase: ReturnType<typeof createClient>, apiToken: string, competition: string, season: string, competitionId = 'liga', label = 'Liga BBVA') {
   const endpoint = `https://api.football-data.org/v4/competitions/${competition}/matches?season=${season}`
   const payload = await fetchJson(endpoint, { 'X-Auth-Token': apiToken })
-  const rows = (payload.matches || []).map((m: FootballDataMatch) => footballDataMatchRow(m, season))
+  const rows = (payload.matches || []).map((m: FootballDataMatch) => footballDataMatchRow(m, season, competitionId, label))
 
   if (rows.length) {
     const { error } = await supabase.from('matches').upsert(rows, { onConflict: 'external_source,external_id' })
     if (error) throw error
   }
 
-  return { provider: 'football-data.org', count: rows.length, details: `Actualizados ${rows.length} partidos de ${competition} temporada ${season}` }
+  return { provider: 'football-data.org', competition: competitionId, count: rows.length, details: `Actualizados ${rows.length} partidos de ${label} temporada ${season}` }
 }
 
 async function scorerNamesForFixture(apiKey: string, fixtureId: string) {
@@ -201,8 +248,8 @@ async function syncApiFootballSquads(supabase: ReturnType<typeof createClient>, 
   return playerRows.length
 }
 
-async function syncApiFootball(supabase: ReturnType<typeof createClient>, apiKey: string, league: string, season: string, options: { syncSquads?: boolean; fullScorers?: boolean }) {
-  const payload = await fetchJson(`https://v3.football.api-sports.io/fixtures?league=${league}&season=${season}`, { 'x-apisports-key': apiKey })
+async function syncApiFootball(supabase: ReturnType<typeof createClient>, apiKey: string, config: SyncCompetition, options: { syncSquads?: boolean; fullScorers?: boolean }) {
+  const payload = await fetchJson(`https://v3.football.api-sports.io/fixtures?league=${config.league}&season=${config.season}`, { 'x-apisports-key': apiKey })
   if (payload.errors && Object.keys(payload.errors).length) throw new Error(`API-Football no disponible: ${JSON.stringify(payload.errors)}`)
   const fixtures: ApiFootballFixture[] = payload.response || []
   const maxEventMatches = Math.max(0, Number(Deno.env.get('API_FOOTBALL_MAX_EVENT_MATCHES') || '12'))
@@ -218,14 +265,28 @@ async function syncApiFootball(supabase: ReturnType<typeof createClient>, apiKey
     scorersByFixture.set(fixtureId, await scorerNamesForFixture(apiKey, fixtureId))
   }
 
-  const rows = fixtures.map((m) => apiFootballMatchRow(m, season, scorersByFixture))
+  const rows = fixtures.map((m) => apiFootballMatchRow(m, config.season, scorersByFixture, config.competition, config.label))
   if (rows.length) {
     const { error } = await supabase.from('matches').upsert(rows, { onConflict: 'external_source,external_id' })
     if (error) throw error
   }
 
-  const squadCount = options.syncSquads ? await syncApiFootballSquads(supabase, apiKey, league, season) : 0
-  return { provider: 'api-football', count: rows.length, scorersChecked: eventFixtures.length, squads: squadCount, details: `Actualizados ${rows.length} partidos, ${eventFixtures.length} con goleadores y ${squadCount} jugadores` }
+  const squadCount = options.syncSquads ? await syncApiFootballSquads(supabase, apiKey, config.league, config.season) : 0
+  return { provider: 'api-football', competition: config.competition, count: rows.length, scorersChecked: eventFixtures.length, squads: squadCount, details: `Actualizados ${rows.length} partidos de ${config.label}, ${eventFixtures.length} con goleadores y ${squadCount} jugadores` }
+}
+
+async function discoverSpanishLeagues(apiKey: string, season: string) {
+  const payload = await fetchJson(`https://v3.football.api-sports.io/leagues?country=Spain&season=${season}`, { 'x-apisports-key': apiKey })
+  const items = payload.response || []
+  return items
+    .map((item: any) => ({
+      id: item?.league?.id,
+      name: cleanName(item?.league?.name),
+      type: cleanName(item?.league?.type),
+      country: cleanName(item?.country?.name),
+      season,
+    }))
+    .filter((item: any) => item.id && /primera|rfef|laliga|segunda/i.test(item.name))
 }
 
 Deno.serve(async (req) => {
@@ -247,39 +308,51 @@ Deno.serve(async (req) => {
       }
     }
 
-    let body: { syncSquads?: boolean; fullScorers?: boolean } = {}
+    let body: { syncSquads?: boolean; fullScorers?: boolean; discoverLeagues?: boolean } = {}
     try { body = await req.json() } catch (_) {}
 
     const supabase = createClient(supabaseUrl, serviceRoleKey)
     const apiFootballKey = Deno.env.get('API_FOOTBALL_KEY')
-    const apiFootballLeague = Deno.env.get('API_FOOTBALL_LEAGUE') || '140'
     const season = Deno.env.get('FOOTBALL_DATA_SEASON') || Deno.env.get('API_FOOTBALL_SEASON') || '2026'
+    const apiFootballLeagues = parseApiFootballLeagues(season)
 
-    let result
-    if (apiFootballKey) {
-      try {
-        result = await syncApiFootball(supabase, apiFootballKey, apiFootballLeague, season, body)
-        if (!result.count) {
-          const fallbackToken = Deno.env.get('FOOTBALL_DATA_TOKEN')
-          if (fallbackToken) result = await syncFootballData(supabase, fallbackToken, Deno.env.get('FOOTBALL_DATA_COMPETITION') || 'PD', season)
-        }
-      } catch (apiFootballError) {
-        const fallbackToken = Deno.env.get('FOOTBALL_DATA_TOKEN')
-        if (!fallbackToken) throw apiFootballError
-        result = await syncFootballData(supabase, fallbackToken, Deno.env.get('FOOTBALL_DATA_COMPETITION') || 'PD', season)
-      }
-    } else {
-      result = await syncFootballData(supabase, required('FOOTBALL_DATA_TOKEN'), Deno.env.get('FOOTBALL_DATA_COMPETITION') || 'PD', season)
+    if (body.discoverLeagues) {
+      if (!apiFootballKey) throw new Error('Falta API_FOOTBALL_KEY para descubrir ligas')
+      const leagues = await discoverSpanishLeagues(apiFootballKey, season)
+      return new Response(JSON.stringify({ ok: true, season, leagues }), {
+        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+      })
     }
 
-    await supabase.from('sync_logs').insert({
+    const results = []
+    if (apiFootballKey) {
+      for (const config of apiFootballLeagues) {
+        try {
+          let result = await syncApiFootball(supabase, apiFootballKey, config, body)
+          if (!result.count && config.competition === 'liga') {
+            const fallbackToken = Deno.env.get('FOOTBALL_DATA_TOKEN')
+            if (fallbackToken) result = await syncFootballData(supabase, fallbackToken, Deno.env.get('FOOTBALL_DATA_COMPETITION') || 'PD', config.season, config.competition, config.label)
+          }
+          results.push(result)
+        } catch (apiFootballError) {
+          const fallbackToken = Deno.env.get('FOOTBALL_DATA_TOKEN')
+          if (config.competition !== 'liga' || !fallbackToken) throw apiFootballError
+          results.push(await syncFootballData(supabase, fallbackToken, Deno.env.get('FOOTBALL_DATA_COMPETITION') || 'PD', config.season, config.competition, config.label))
+        }
+      }
+    } else {
+      results.push(await syncFootballData(supabase, required('FOOTBALL_DATA_TOKEN'), Deno.env.get('FOOTBALL_DATA_COMPETITION') || 'PD', season))
+    }
+
+    await supabase.from('sync_logs').insert(results.map((result) => ({
       source: result.provider,
-      competition: 'liga',
+      competition: result.competition,
       status: 'ok',
       details: result.details,
-    })
+    })))
 
-    return new Response(JSON.stringify({ ok: true, season, ...result }), {
+    const count = results.reduce((sum, result) => sum + result.count, 0)
+    return new Response(JSON.stringify({ ok: true, season, count, results }), {
       headers: { ...corsHeaders, 'Content-Type': 'application/json' },
     })
   } catch (error) {
