@@ -69,12 +69,26 @@ function competitionLabel(competition: string) {
 
 function parseApiFootballLeagues(defaultSeason: string): SyncCompetition[] {
   const raw = Deno.env.get('API_FOOTBALL_LEAGUES')
-  const fallback = [{
-    competition: 'liga',
-    league: Deno.env.get('API_FOOTBALL_LEAGUE') || '140',
-    season: Deno.env.get('API_FOOTBALL_SEASON') || defaultSeason,
-    label: 'Liga BBVA',
-  }]
+  const fallback = [
+    {
+      competition: 'liga',
+      league: Deno.env.get('API_FOOTBALL_LEAGUE') || '140',
+      season: Deno.env.get('API_FOOTBALL_SEASON') || defaultSeason,
+      label: 'Liga BBVA',
+    },
+    {
+      competition: 'primera_rfef_g1',
+      league: '435',
+      season: defaultSeason,
+      label: 'Primera Federacion Grupo 1',
+    },
+    {
+      competition: 'primera_rfef_g2',
+      league: '436',
+      season: defaultSeason,
+      label: 'Primera Federacion Grupo 2',
+    },
+  ]
 
   if (!raw) return fallback
 
@@ -336,8 +350,12 @@ Deno.serve(async (req) => {
           results.push(result)
         } catch (apiFootballError) {
           const fallbackToken = Deno.env.get('FOOTBALL_DATA_TOKEN')
-          if (config.competition !== 'liga' || !fallbackToken) throw apiFootballError
-          results.push(await syncFootballData(supabase, fallbackToken, Deno.env.get('FOOTBALL_DATA_COMPETITION') || 'PD', config.season, config.competition, config.label))
+          if (config.competition === 'liga' && fallbackToken) {
+            results.push(await syncFootballData(supabase, fallbackToken, Deno.env.get('FOOTBALL_DATA_COMPETITION') || 'PD', config.season, config.competition, config.label))
+          } else {
+            const message = apiFootballError instanceof Error ? apiFootballError.message : String(apiFootballError)
+            results.push({ provider: 'api-football', competition: config.competition, count: 0, status: 'error', details: `No se pudo actualizar ${config.label}: ${message}` })
+          }
         }
       }
     } else {
@@ -347,7 +365,7 @@ Deno.serve(async (req) => {
     await supabase.from('sync_logs').insert(results.map((result) => ({
       source: result.provider,
       competition: result.competition,
-      status: 'ok',
+      status: result.status || 'ok',
       details: result.details,
     })))
 

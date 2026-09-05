@@ -7,19 +7,27 @@ La app ya tiene preparadas estas competiciones:
 
 Football-data.org no publica Primera Federacion en su API. Para calendario, horarios y resultados automaticos hay que usar API-Football, que si permite sincronizar varias ligas desde la misma funcion.
 
+La funcion `sync-football-data` ya trae por defecto:
+
+- Liga BBVA: API-Football `140`
+- Primera Federacion Grupo 1: API-Football `435`
+- Primera Federacion Grupo 2: API-Football `436`
+
 ## Variable necesaria en Supabase
 
-En Supabase > Edge Functions > Secrets, configura `API_FOOTBALL_LEAGUES` con una lista como esta:
+Este paso ya no es obligatorio. Solo hace falta si algun dia quieres cambiar IDs, temporada o nombres sin tocar codigo.
+
+En Supabase > Edge Functions > Secrets, puedes configurar `API_FOOTBALL_LEAGUES` con una lista como esta:
 
 ```json
 [
   {"competition":"liga","league":"140","season":"2026","label":"Liga BBVA"},
-  {"competition":"primera_rfef_g1","league":"PON_AQUI_ID_GRUPO_1","season":"2026","label":"Primera Federacion Grupo 1"},
-  {"competition":"primera_rfef_g2","league":"PON_AQUI_ID_GRUPO_2","season":"2026","label":"Primera Federacion Grupo 2"}
+  {"competition":"primera_rfef_g1","league":"435","season":"2026","label":"Primera Federacion Grupo 1"},
+  {"competition":"primera_rfef_g2","league":"436","season":"2026","label":"Primera Federacion Grupo 2"}
 ]
 ```
 
-Los valores `PON_AQUI_ID_GRUPO_1` y `PON_AQUI_ID_GRUPO_2` deben salir del panel o endpoint de API-Football.
+Si API-Football todavia no tiene cargada una temporada concreta para Primera Federacion, la funcion no rompe la Liga BBVA: registra el aviso en `sync_logs` y sigue.
 
 ## Como descubrir los IDs
 
@@ -39,4 +47,3 @@ Cuando la variable este puesta y la funcion desplegada, el cron actual podra tra
 - cambios de horario,
 - resultados oficiales,
 - clasificacion de jornadas y general a partir de los resultados guardados.
-
