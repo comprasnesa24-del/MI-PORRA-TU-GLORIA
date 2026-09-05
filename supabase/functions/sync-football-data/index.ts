@@ -27,6 +27,21 @@ type ApiFootballEvent = {
 type ApiFootballTeam = { team?: { id?: number; name?: string; code?: string } }
 type ApiFootballSquadPlayer = { id?: number; name?: string; position?: string }
 type SyncCompetition = { competition: string; league: string; season: string; label: string }
+type ApiFootballComMatch = {
+  match_id?: string
+  league_id?: string
+  league_name?: string
+  match_date?: string
+  match_time?: string
+  match_status?: string
+  match_hometeam_name?: string
+  match_awayteam_name?: string
+  match_hometeam_score?: string
+  match_awayteam_score?: string
+  match_round?: string
+  goalscorer?: { home_scorer?: string; away_scorer?: string }[]
+}
+type ApiFootballComCompetition = SyncCompetition & { teamFilter?: string[] }
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
@@ -65,6 +80,57 @@ function competitionLabel(competition: string) {
     primera_rfef_g2: 'Primera Federacion Grupo 2',
   }
   return labels[competition] || competition
+}
+
+function normalizeKey(value?: string | null) {
+  return cleanName(value).toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '').replace(/[^a-z0-9]+/g, ' ').trim()
+}
+
+const primeraRfefGroupTeams: Record<string, string[]> = {
+  primera_rfef_g1: [
+    'Real Aviles Industrial',
+    'Pontevedra CF',
+    'CP Cacereno',
+    'CD Mirandes',
+    'UD Ourense',
+    'SD Ponferradina',
+    'Arenas Club',
+    'Racing Club Ferrol',
+    'Zamora CF',
+    'Athletic Club B',
+    'AD Merida',
+    'RC Deportivo Fabril',
+    'Barakaldo CF',
+    'CyD Leonesa',
+    'Real Union Club',
+    'CD Coria',
+    'Unionistas de Salamanca CF',
+    'CD Lugo',
+    'UD Logrones',
+    'CD Extremadura',
+  ],
+  primera_rfef_g2: [
+    'SD Huesca',
+    'UE Sant Andreu',
+    'Hercules de Alicante CF',
+    'Real Murcia CF',
+    'Algeciras CF',
+    'FC Cartagena',
+    'Villarreal CF B',
+    'Real Madrid Castilla',
+    'Juventud de Torremolinos CF',
+    'UD Ibiza',
+    'CF Rayo Majadahonda',
+    'Aguilas FC',
+    'Gimnastic de Tarragona',
+    'Real Zaragoza',
+    'Antequera CF',
+    'Real Jaen CF',
+    'Atletico Madrileno',
+    'CD Teruel',
+    'AD Alcorcon',
+    'CE Europa',
+  ],
 }
 
 function parseApiFootballLeagues(defaultSeason: string): SyncCompetition[] {
@@ -112,6 +178,61 @@ function parseApiFootballLeagues(defaultSeason: string): SyncCompetition[] {
       league,
       season: season || defaultSeason,
       label: labelParts.join(':') || competitionLabel(competition),
+    }
+  }).filter((item) => item.competition && item.league)
+
+  return configs.length ? configs : fallback
+}
+
+function parseApiFootballComLeagues(defaultSeason: string): ApiFootballComCompetition[] {
+  const raw = Deno.env.get('APIFOOTBALL_LEAGUES')
+  const fallback: ApiFootballComCompetition[] = [
+    {
+      competition: 'liga',
+      league: '302',
+      season: defaultSeason,
+      label: 'Liga BBVA',
+    },
+    {
+      competition: 'primera_rfef_g1',
+      league: '299',
+      season: defaultSeason,
+      label: 'Primera Federacion Grupo 1',
+      teamFilter: primeraRfefGroupTeams.primera_rfef_g1,
+    },
+    {
+      competition: 'primera_rfef_g2',
+      league: '299',
+      season: defaultSeason,
+      label: 'Primera Federacion Grupo 2',
+      teamFilter: primeraRfefGroupTeams.primera_rfef_g2,
+    },
+  ]
+
+  if (!raw) return fallback
+
+  try {
+    const parsed = JSON.parse(raw)
+    if (Array.isArray(parsed)) {
+      const configs = parsed.map((item) => ({
+        competition: cleanName(item?.competition),
+        league: cleanName(item?.league),
+        season: cleanName(item?.season) || defaultSeason,
+        label: cleanName(item?.label) || competitionLabel(cleanName(item?.competition)),
+        teamFilter: Array.isArray(item?.teamFilter) ? item.teamFilter.map(cleanName).filter(Boolean) : primeraRfefGroupTeams[cleanName(item?.competition)],
+      })).filter((item) => item.competition && item.league)
+      if (configs.length) return configs
+    }
+  } catch (_) {}
+
+  const configs = raw.split(',').map((part) => {
+    const [competition, league, season, ...labelParts] = part.split(':').map(cleanName)
+    return {
+      competition,
+      league,
+      season: season || defaultSeason,
+      label: labelParts.join(':') || competitionLabel(competition),
+      teamFilter: primeraRfefGroupTeams[competition],
     }
   }).filter((item) => item.competition && item.league)
 
@@ -175,6 +296,78 @@ function apiFootballMatchRow(match: ApiFootballFixture, season: string, scorersB
       real_home: homeScore,
       real_away: awayScore,
       real_scorers: scorersByFixture.get(fixtureId) || '',
+      result_updated_at: new Date().toISOString(),
+    } : {}),
+  }
+}
+
+function dateTimeInZoneToUtcIso(date?: string, time?: string, timeZone = 'Europe/Madrid') {
+  if (!date) return null
+  const [year, month, day] = date.split('-').map(Number)
+  const [hour, minute] = String(time || '00:00').split(':').map(Number)
+  if (![year, month, day].every(Number.isFinite)) return null
+
+  const desired = { year, month, day, hour: hour || 0, minute: minute || 0 }
+  let utc = Date.UTC(desired.year, desired.month - 1, desired.day, desired.hour, desired.minute)
+  const formatter = new Intl.DateTimeFormat('en-GB', {
+    timeZone,
+    hour12: false,
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
+    hour: '2-digit',
+    minute: '2-digit',
+  })
+
+  for (let i = 0; i < 3; i++) {
+    const parts = Object.fromEntries(formatter.formatToParts(new Date(utc)).map((part) => [part.type, part.value]))
+    const actual = Date.UTC(Number(parts.year), Number(parts.month) - 1, Number(parts.day), Number(parts.hour), Number(parts.minute))
+    const target = Date.UTC(desired.year, desired.month - 1, desired.day, desired.hour, desired.minute)
+    const diff = target - actual
+    if (!diff) break
+    utc += diff
+  }
+
+  return new Date(utc).toISOString()
+}
+
+function isApiFootballComFinished(status?: string) {
+  const value = cleanName(status).toLowerCase()
+  return ['finished', 'after pen.', 'after pen', 'after et', 'ft', 'aet', 'pen'].includes(value)
+}
+
+function apiFootballComScorers(match: ApiFootballComMatch) {
+  const names = (match.goalscorer || []).flatMap((goal) => [goal.home_scorer, goal.away_scorer]).map(cleanName)
+  return uniqueNames(names).join(',')
+}
+
+function teamIsInFilter(match: ApiFootballComMatch, teamFilter?: string[]) {
+  if (!teamFilter?.length) return true
+  const teams = new Set(teamFilter.map(normalizeKey))
+  return teams.has(normalizeKey(match.match_hometeam_name)) || teams.has(normalizeKey(match.match_awayteam_name))
+}
+
+function apiFootballComMatchRow(match: ApiFootballComMatch, season: string, config: ApiFootballComCompetition) {
+  const matchId = cleanName(match.match_id)
+  const finished = isApiFootballComFinished(match.match_status)
+  const homeScore = match.match_hometeam_score === '' || match.match_hometeam_score == null ? null : Number(match.match_hometeam_score)
+  const awayScore = match.match_awayteam_score === '' || match.match_awayteam_score == null ? null : Number(match.match_awayteam_score)
+  const round = cleanName(match.match_round)
+
+  return {
+    id: `${config.competition}_${season}_apifootball_${matchId}`,
+    competition: config.competition,
+    external_source: 'apifootball.com',
+    external_id: `${config.competition}:${matchId}`,
+    external_status: cleanName(match.match_status),
+    group_name: round ? `Jornada ${round}` : config.label,
+    home_team: cleanName(match.match_hometeam_name) || 'Equipo local pendiente',
+    away_team: cleanName(match.match_awayteam_name) || 'Equipo visitante pendiente',
+    match_date: dateTimeInZoneToUtcIso(match.match_date, match.match_time) || match.match_date,
+    ...(finished && Number.isFinite(homeScore) && Number.isFinite(awayScore) ? {
+      real_home: homeScore,
+      real_away: awayScore,
+      real_scorers: apiFootballComScorers(match),
       result_updated_at: new Date().toISOString(),
     } : {}),
   }
@@ -289,6 +482,36 @@ async function syncApiFootball(supabase: ReturnType<typeof createClient>, apiKey
   return { provider: 'api-football', competition: config.competition, count: rows.length, scorersChecked: eventFixtures.length, squads: squadCount, details: `Actualizados ${rows.length} partidos de ${config.label}, ${eventFixtures.length} con goleadores y ${squadCount} jugadores` }
 }
 
+async function syncApiFootballCom(supabase: ReturnType<typeof createClient>, apiKey: string, config: ApiFootballComCompetition) {
+  const from = Deno.env.get('APIFOOTBALL_FROM') || `${config.season}-07-01`
+  const to = Deno.env.get('APIFOOTBALL_TO') || `${Number(config.season) + 1}-06-30`
+  const params = new URLSearchParams({
+    action: 'get_events',
+    from,
+    to,
+    league_id: config.league,
+    timezone: 'Europe/Madrid',
+    APIkey: apiKey,
+  })
+  const payload = await fetchJson(`https://apiv3.apifootball.com/?${params.toString()}`, {})
+  if (!Array.isArray(payload)) throw new Error(`APIFootball no devolvio una lista: ${JSON.stringify(payload).slice(0, 300)}`)
+  const matches = (payload as ApiFootballComMatch[]).filter((match) => teamIsInFilter(match, config.teamFilter))
+  const rows = matches.map((match) => apiFootballComMatchRow(match, config.season, config))
+
+  if (rows.length) {
+    const { error } = await supabase.from('matches').upsert(rows, { onConflict: 'external_source,external_id' })
+    if (error) throw error
+  }
+
+  return { provider: 'apifootball.com', competition: config.competition, count: rows.length, details: `Actualizados ${rows.length} partidos de ${config.label} con APIFootball` }
+}
+
+async function syncApiFootballComByCompetition(supabase: ReturnType<typeof createClient>, apiKey: string, competition: string, season: string) {
+  const config = parseApiFootballComLeagues(season).find((item) => item.competition === competition)
+  if (!config) throw new Error(`No hay configuracion APIFootball para ${competition}`)
+  return await syncApiFootballCom(supabase, apiKey, config)
+}
+
 async function discoverSpanishLeagues(apiKey: string, season: string) {
   const payload = await fetchJson(`https://v3.football.api-sports.io/leagues?country=Spain&season=${season}`, { 'x-apisports-key': apiKey })
   const items = payload.response || []
@@ -327,8 +550,10 @@ Deno.serve(async (req) => {
 
     const supabase = createClient(supabaseUrl, serviceRoleKey)
     const apiFootballKey = Deno.env.get('API_FOOTBALL_KEY')
+    const apiFootballComKey = Deno.env.get('APIFOOTBALL_KEY')
     const season = Deno.env.get('FOOTBALL_DATA_SEASON') || Deno.env.get('API_FOOTBALL_SEASON') || '2026'
     const apiFootballLeagues = parseApiFootballLeagues(season)
+    const apiFootballComLeagues = parseApiFootballComLeagues(season)
 
     if (body.discoverLeagues) {
       if (!apiFootballKey) throw new Error('Falta API_FOOTBALL_KEY para descubrir ligas')
@@ -342,21 +567,37 @@ Deno.serve(async (req) => {
     if (apiFootballKey) {
       for (const config of apiFootballLeagues) {
         try {
+          if (apiFootballComKey && config.competition.startsWith('primera_rfef_')) {
+            results.push(await syncApiFootballComByCompetition(supabase, apiFootballComKey, config.competition, config.season))
+            continue
+          }
+
           let result = await syncApiFootball(supabase, apiFootballKey, config, body)
           if (!result.count && config.competition === 'liga') {
             const fallbackToken = Deno.env.get('FOOTBALL_DATA_TOKEN')
             if (fallbackToken) result = await syncFootballData(supabase, fallbackToken, Deno.env.get('FOOTBALL_DATA_COMPETITION') || 'PD', config.season, config.competition, config.label)
           }
+          if (!result.count && apiFootballComKey) {
+            result = await syncApiFootballComByCompetition(supabase, apiFootballComKey, config.competition, config.season)
+          }
           results.push(result)
         } catch (apiFootballError) {
           const fallbackToken = Deno.env.get('FOOTBALL_DATA_TOKEN')
           if (config.competition === 'liga' && fallbackToken) {
-            results.push(await syncFootballData(supabase, fallbackToken, Deno.env.get('FOOTBALL_DATA_COMPETITION') || 'PD', config.season, config.competition, config.label))
+            let result = await syncFootballData(supabase, fallbackToken, Deno.env.get('FOOTBALL_DATA_COMPETITION') || 'PD', config.season, config.competition, config.label)
+            if (!result.count && apiFootballComKey) result = await syncApiFootballComByCompetition(supabase, apiFootballComKey, config.competition, config.season)
+            results.push(result)
+          } else if (apiFootballComKey) {
+            results.push(await syncApiFootballComByCompetition(supabase, apiFootballComKey, config.competition, config.season))
           } else {
             const message = apiFootballError instanceof Error ? apiFootballError.message : String(apiFootballError)
-            results.push({ provider: 'api-football', competition: config.competition, count: 0, status: 'error', details: `No se pudo actualizar ${config.label}: ${message}` })
+            results.push({ provider: 'api-football', competition: config.competition, count: 0, status: 'error', details: `No se pudo actualizar ${config.label}: ${message}. Si API-Football no trae esta liga, configura APIFOOTBALL_KEY para usar apifootball.com.` })
           }
         }
+      }
+    } else if (apiFootballComKey) {
+      for (const config of apiFootballComLeagues) {
+        results.push(await syncApiFootballCom(supabase, apiFootballComKey, config))
       }
     } else {
       results.push(await syncFootballData(supabase, required('FOOTBALL_DATA_TOKEN'), Deno.env.get('FOOTBALL_DATA_COMPETITION') || 'PD', season))
