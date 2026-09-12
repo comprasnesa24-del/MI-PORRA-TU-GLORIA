@@ -182,7 +182,7 @@ function jokerEnabled(){return poolUsesLeagueRules()||!!currentPool?.enable_joke
 function jokerUsed(){return jokerCount()>=jokerLimit()}
 function myMembership(){return currentUser&&currentPool?poolMembers.find(pm=>pm.user_id===currentUser.id&&pm.pool_id===currentPool.id):null}
 function canAdminPool(){return currentUser?.role==='admin'}
-function isPoolCreator(pool=currentPool){return !!(currentUser&&pool&&String(pool.created_by)===String(currentUser.id))}
+function isPoolCreator(pool=currentPool){return !!(currentUser&&pool&&(String(pool.created_by)===String(currentUser.id)||poolMembers.some(pm=>String(pm.pool_id)===String(pool.id)&&String(pm.user_id)===String(currentUser.id)&&pm.role==='admin')))}
 function autoCopyStorageKey(){return currentUser?'auto_copy_predictions_'+currentUser.id:null}
 function autoCopyEnabled(){if(!currentUser||currentUser.role==='admin')return false;const key=autoCopyStorageKey();const saved=key?localStorage.getItem(key):null;return saved!==null?saved==='1':!!currentUser.auto_copy_predictions}
 function setLocalAutoCopy(value){const key=autoCopyStorageKey();if(key)localStorage.setItem(key,value?'1':'0')}
