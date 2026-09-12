@@ -89,6 +89,19 @@ function normalizeKey(value?: string | null) {
   return cleanName(value).toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '').replace(/[^a-z0-9]+/g, ' ').trim()
 }
 
+function teamTokens(value?: string | null) {
+  const stopWords = new Set(['club', 'cf', 'fc', 'ud', 'rc', 'rcd', 'ca', 'de', 'del', 'la', 'el', 'los', 'las', 'balompie', 'futbol'])
+  return normalizeKey(value)
+    .split(' ')
+    .filter((token) => token && !stopWords.has(token))
+}
+
+function teamMatchScore(left?: string | null, right?: string | null) {
+  const leftTokens = teamTokens(left)
+  const rightTokens = new Set(teamTokens(right))
+  return leftTokens.filter((token) => rightTokens.has(token)).length
+}
+
 const primeraRfefGroupTeams: Record<string, string[]> = {
   primera_rfef_g1: [
     'Real Aviles Industrial',
@@ -498,7 +511,7 @@ async function syncApiFootball(supabase: ReturnType<typeof createClient>, apiKey
   const payload = await fetchJson(`https://v3.football.api-sports.io/fixtures?league=${config.league}&season=${config.season}`, { 'x-apisports-key': apiKey })
   if (payload.errors && Object.keys(payload.errors).length) throw new Error(`API-Football no disponible: ${JSON.stringify(payload.errors)}`)
   const fixtures: ApiFootballFixture[] = payload.response || []
-  const maxEventMatches = Math.max(0, Number(Deno.env.get('API_FOOTBALL_MAX_EVENT_MATCHES') || '12'))
+  const maxEventMatches = options.fullScorers ? Math.max(0, Number(Deno.env.get('API_FOOTBALL_MAX_EVENT_MATCHES') || '12')) : 0
   const finished = fixtures
     .filter((m) => isFinishedStatus(m.fixture?.status?.short))
     .sort((a, b) => (b.fixture?.timestamp || 0) - (a.fixture?.timestamp || 0))
@@ -519,6 +532,78 @@ async function syncApiFootball(supabase: ReturnType<typeof createClient>, apiKey
 
   const squadCount = options.syncSquads ? await syncApiFootballSquads(supabase, apiKey, config.league, config.season) : 0
   return { provider: 'api-football', competition: config.competition, count: rows.length, scorersChecked: eventFixtures.length, squads: squadCount, details: `Actualizados ${rows.length} partidos de ${config.label}, ${eventFixtures.length} con goleadores y ${squadCount} jugadores` }
+}
+
+async function enrichExistingMatchesFromApiFootball(supabase: ReturnType<typeof createClient>, apiKey: string, config: SyncCompetition, options: { fullScorers?: boolean }) {
+  const payload = await fetchJson(`https://v3.football.api-sports.io/fixtures?league=${config.league}&season=${config.season}`, { 'x-apisports-key': apiKey })
+  if (payload.errors && Object.keys(payload.errors).length) throw new Error(`API-Football no disponible: ${JSON.stringify(payload.errors)}`)
+  const fixtures: ApiFootballFixture[] = payload.response || []
+  const { data: existing, error } = await supabase
+    .from('matches')
+    .select('id,home_team,away_team,match_date')
+    .eq('competition', config.competition)
+    .eq('external_source', 'football-data.org')
+  if (error) throw error
+
+  const maxEventMatches = options.fullScorers ? Math.max(0, Number(Deno.env.get('API_FOOTBALL_MAX_EVENT_MATCHES') || '12')) : 0
+  const finished = fixtures
+    .filter((m) => isFinishedStatus(m.fixture?.status?.short))
+    .sort((a, b) => (b.fixture?.timestamp || 0) - (a.fixture?.timestamp || 0))
+  const eventFixtures = options.fullScorers ? finished : finished.slice(0, maxEventMatches)
+  const scorersByFixture = new Map<string, string>()
+
+  for (const fixture of eventFixtures) {
+    const fixtureId = String(fixture.fixture?.id || '')
+    if (!fixtureId) continue
+    scorersByFixture.set(fixtureId, await scorerNamesForFixture(apiKey, fixtureId))
+  }
+
+  const updates = []
+  const existingMatches = Array.isArray(existing) ? existing : []
+  for (const fixture of fixtures) {
+    const fixtureId = String(fixture.fixture?.id || '')
+    if (!fixtureId) continue
+    const fixtureTime = fixture.fixture?.timestamp ? fixture.fixture.timestamp * 1000 : Date.parse(String(fixture.fixture?.date || ''))
+    const home = cleanName(fixture.teams?.home?.name)
+    const away = cleanName(fixture.teams?.away?.name)
+    const match = existingMatches
+      .map((item: any) => {
+        const existingTime = Date.parse(String(item.match_date || ''))
+        const sameWindow = Number.isFinite(fixtureTime) && Number.isFinite(existingTime) && Math.abs(fixtureTime - existingTime) <= 1000 * 60 * 60 * 36
+        const score = teamMatchScore(item.home_team, home) + teamMatchScore(item.away_team, away)
+        return { item, score, sameWindow }
+      })
+      .filter((candidate: any) => candidate.sameWindow && candidate.score >= 2)
+      .sort((a: any, b: any) => b.score - a.score)[0]?.item
+    if (!match?.id) continue
+
+    const status = fixture.fixture?.status?.short || ''
+    const finishedMatch = isFinishedStatus(status)
+    const homeScore = fixture.score?.fulltime?.home ?? fixture.goals?.home ?? null
+    const awayScore = fixture.score?.fulltime?.away ?? fixture.goals?.away ?? null
+    updates.push({
+      id: match.id,
+      api_fixture_id: fixtureId,
+      external_status: status,
+      match_date: fixture.fixture?.date || match.match_date,
+      ...(finishedMatch ? {
+        real_home: homeScore,
+        real_away: awayScore,
+        real_scorers: scorersByFixture.get(fixtureId) || '',
+        result_updated_at: new Date().toISOString(),
+      } : {}),
+    })
+  }
+
+  if (updates.length) {
+    for (const update of updates) {
+      const { id, ...changes } = update
+      const { error: updateError } = await supabase.from('matches').update(changes).eq('id', id)
+      if (updateError) throw updateError
+    }
+  }
+
+  return { provider: 'api-football', competition: config.competition, count: updates.length, scorersChecked: eventFixtures.length, squads: 0, details: `Enriquecidos ${updates.length} partidos existentes de ${config.label}, ${eventFixtures.length} con goleadores, sin duplicar pronosticos` }
 }
 
 async function syncApiFootballCom(supabase: ReturnType<typeof createClient>, apiKey: string, config: ApiFootballComCompetition) {
@@ -611,9 +696,22 @@ Deno.serve(async (req) => {
             continue
           }
 
-          let result = await syncApiFootball(supabase, apiFootballKey, config, body)
+          const fallbackToken = Deno.env.get('FOOTBALL_DATA_TOKEN')
+          let result
+          if (config.competition === 'liga' && fallbackToken) {
+            const primaryResult = await syncFootballData(supabase, fallbackToken, Deno.env.get('FOOTBALL_DATA_COMPETITION') || 'PD', config.season, config.competition, config.label)
+            const enrichResult = await enrichExistingMatchesFromApiFootball(supabase, apiFootballKey, config, body)
+            result = {
+              provider: 'api-football',
+              competition: config.competition,
+              count: primaryResult.count,
+              status: 'ok',
+              details: `${primaryResult.details}; ${enrichResult.details}`,
+            }
+          } else {
+            result = await syncApiFootball(supabase, apiFootballKey, config, body)
+          }
           if (!result.count && config.competition === 'liga') {
-            const fallbackToken = Deno.env.get('FOOTBALL_DATA_TOKEN')
             if (fallbackToken) result = await syncFootballData(supabase, fallbackToken, Deno.env.get('FOOTBALL_DATA_COMPETITION') || 'PD', config.season, config.competition, config.label)
           }
           if (!result.count && apiFootballComKey) {
