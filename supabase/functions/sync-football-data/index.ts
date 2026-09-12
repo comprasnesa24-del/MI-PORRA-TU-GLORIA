@@ -76,6 +76,9 @@ function uniqueNames(names: string[]) {
 function competitionLabel(competition: string) {
   const labels: Record<string, string> = {
     liga: 'Liga BBVA',
+    premier: 'Premier League',
+    champions: 'Champions League',
+    copa_rey: 'Copa del Rey',
     primera_rfef_g1: 'Primera Federacion Grupo 1',
     primera_rfef_g2: 'Primera Federacion Grupo 2',
   }
@@ -143,6 +146,24 @@ function parseApiFootballLeagues(defaultSeason: string): SyncCompetition[] {
       label: 'Liga BBVA',
     },
     {
+      competition: 'premier',
+      league: Deno.env.get('API_FOOTBALL_PREMIER_LEAGUE') || '39',
+      season: defaultSeason,
+      label: 'Premier League',
+    },
+    {
+      competition: 'champions',
+      league: Deno.env.get('API_FOOTBALL_CHAMPIONS_LEAGUE') || '2',
+      season: defaultSeason,
+      label: 'Champions League',
+    },
+    {
+      competition: 'copa_rey',
+      league: Deno.env.get('API_FOOTBALL_COPA_REY') || '143',
+      season: defaultSeason,
+      label: 'Copa del Rey',
+    },
+    {
       competition: 'primera_rfef_g1',
       league: '435',
       season: defaultSeason,
@@ -192,6 +213,24 @@ function parseApiFootballComLeagues(defaultSeason: string): ApiFootballComCompet
       league: '302',
       season: defaultSeason,
       label: 'Liga BBVA',
+    },
+    {
+      competition: 'premier',
+      league: '152',
+      season: defaultSeason,
+      label: 'Premier League',
+    },
+    {
+      competition: 'champions',
+      league: '3',
+      season: defaultSeason,
+      label: 'Champions League',
+    },
+    {
+      competition: 'copa_rey',
+      league: '300',
+      season: defaultSeason,
+      label: 'Copa del Rey',
     },
     {
       competition: 'primera_rfef_g1',
