@@ -12,3 +12,5 @@ android-play/*.idsig
 # Web build / dependencies
 node_modules/
 dist/
+.vercel
+.env*
