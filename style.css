@@ -127,7 +127,9 @@ button{background:var(--black);color:var(--yellow);border:2px solid var(--yellow
 
 /* Compact mode: menos rollo, mas app */
 .app{padding-top:64px;padding-bottom:82px}
-.topbar{grid-template-columns:40px 1fr 40px;padding:7px 10px;gap:8px}
+.topbar{grid-template-columns:40px 1fr auto;padding:7px 10px;gap:8px}
+.top-actions{display:flex;gap:5px;justify-content:flex-end}
+.top-actions .icon-btn{flex:0 0 auto}
 .topbar b{font-size:14px;line-height:1.05}
 .topbar span{font-size:11px;line-height:1.1}
 .icon-btn{width:36px;height:36px;border-radius:12px;font-size:18px;border-width:2px}
@@ -249,3 +251,5 @@ button{padding:9px 12px;font-size:14px;border-radius:12px;border-width:2px}
 .autocopy-inline span{font-size:11px;line-height:1.15}
 .autocopy-inline button{margin:0;padding:7px 10px}
 @media(max-width:700px){.autocopy-inline{grid-template-columns:1fr auto}.autocopy-inline b{font-size:12px}.autocopy-inline button{font-size:11px;padding:6px 8px}}
+.admin-user-row{grid-template-columns:1.6fr 62px 96px}
+@media(max-width:700px){.admin-user-row{grid-template-columns:1fr}.top-actions{gap:3px}.top-actions .icon-btn{width:32px;height:32px;font-size:16px}}
