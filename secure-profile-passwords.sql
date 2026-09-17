@@ -21,7 +21,7 @@ create or replace function public.verify_profile_password(p_profile_id uuid, p_p
 returns boolean
 language plpgsql
 security definer
-set search_path = public
+set search_path = public, extensions
 as $$
 declare
   stored_hash text;
@@ -47,7 +47,7 @@ create or replace function public.change_profile_password_secure(
 returns boolean
 language plpgsql
 security definer
-set search_path = public
+set search_path = public, extensions
 as $$
 begin
   if length(coalesce(p_new_password, '')) < 4 then
@@ -75,7 +75,7 @@ create or replace function public.register_profile_secure(
 returns jsonb
 language plpgsql
 security definer
-set search_path = public
+set search_path = public, extensions
 as $$
 declare
   created_profile public.profiles%rowtype;
@@ -124,7 +124,7 @@ create or replace function public.admin_reset_profile_password_secure(
 returns boolean
 language plpgsql
 security definer
-set search_path = public, auth
+set search_path = public, auth, extensions
 as $$
 declare
   admin_email text;
