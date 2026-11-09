@@ -427,13 +427,13 @@ async function saveRealPodium(){if(currentUser?.role!=='admin'||!currentPool)ret
 async function loadData(doRender=true){
   if(!supabaseReady)return renderNoConfig();
 
-  const predictionRequest=appSessionToken?supabase.rpc('get_visible_predictions',{p_session_token:appSessionToken}):Promise.resolve({data:[],error:null});
-  const [u,p,pm,m,pr,msg,tp1,tp2]=await Promise.all([
+  const predictionRequests=appSessionToken?[0,1000,2000,3000,4000].map(offset=>supabase.rpc('get_visible_predictions_page',{p_session_token:appSessionToken,p_offset:offset,p_limit:1000})):[];
+  const [u,p,pm,m,predictionPages,msg,tp1,tp2]=await Promise.all([
     supabase.from('profiles').select(PROFILE_SELECT),
     supabase.from('pools').select('*').order('created_at',{ascending:false}),
     supabase.from('pool_members').select('*'),
     supabase.from('matches').select('*').order('match_date'),
-    predictionRequest,
+    Promise.all(predictionRequests),
     supabase.from('messages').select('*').order('created_at',{ascending:true}).limit(200),
     supabase.from('team_players').select('*').range(0,999),
     supabase.from('team_players').select('*').range(1000,1999)
@@ -443,7 +443,7 @@ async function loadData(doRender=true){
   pools=p.data||[];
   poolMembers=pm.data||[];
   matches=m.data||[];
-  predictions=pr.data||[];
+  predictions=(predictionPages||[]).flatMap(page=>page.data||[]);
   messages=msg.data||[];
   messagesLoadError=msg.error?.message||'';
   teamPlayers=[...(tp1.data||[]),...(tp2.data||[])];
